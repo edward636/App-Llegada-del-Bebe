@@ -26,6 +26,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -60,6 +61,7 @@ import java.util.UUID
 fun AddProductDialog(
     defaultRegisteredBy: String = "Papá (Edward)",
     onDismiss: () -> Unit,
+    onScanBarcode: (() -> Unit)? = null,
     onSave: (BabyProduct) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -275,7 +277,14 @@ fun AddProductDialog(
                             countryVariant = com.example.llegadadelbebe.core.util.BarcodeHelper.resolveCountryVariant(it, manufacturedIn)
                         },
                         label = { Text("Código de Barras (EAN)") },
-                        placeholder = { Text("759...") },
+                        placeholder = { Text("Toca 📷 para escanear") },
+                        trailingIcon = {
+                            if (onScanBarcode != null) {
+                                IconButton(onClick = onScanBarcode) {
+                                    Text("📷", fontSize = 16.sp)
+                                }
+                            }
+                        },
                         modifier = Modifier.weight(1.2f),
                         shape = RoundedCornerShape(12.dp)
                     )

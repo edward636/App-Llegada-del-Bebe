@@ -53,6 +53,7 @@ class GeminiClient(
                 Analiza con máxima precisión la fotografía del producto o su empaque (pañales, ropita, toallitas, champús, colonias, cortauñas, termómetro, cremas, teteros/biberones, medicinas, etc.).
 
                 Pautas específicas:
+                - REGLA DE ORO DE VERACIDAD (CERO ALUCINACIÓN): NUNCA inventes o supongas ingredientes, lote, unidades o fecha de vencimiento que no estén 100% legibles en la imagen. Si un producto de higiene, salud, pañales o alimentación no muestra los ingredientes o la fecha de caducidad en esta cara frontal, deja "ingredientes_materiales": "", marca "informacion_incompleta": true, y en "que_falta" redacta: "Falta fotografiar el reverso del empaque para leer la tabla de ingredientes y la fecha de caducidad con exactitud."
                 - En PAÑALES: En Venezuela se usan las tallas RN (Recién Nacido / hasta 4.5kg), P (Pequeño / 4-6kg), M (Mediano / 6-9.5kg), G (Grande / 9-12.5kg), XG, XXG. Si el paquete indica Etapa 1 asócialo a Talla P, Etapa 2 a Talla M, Etapa 3 a Talla G.
                 - En CONTEO: Identifica si viene por paquete (ej: 1 paquete de 24 pañales -> paquetes: 1, unidades_por_paquete: 24, unidades_totales: 24; toallitas de 80 unidades -> paquetes: 1, unidades_por_paquete: 80).
                 - En ROPITA: Identifica talla (RN, 0-3M, 3-6M, etc.), tipo de tela (ej: 100% Algodón Pima) y analiza "edad_util": hasta qué edad en meses o peso estimado puede usarla el bebé antes de que le quede pequeña.
@@ -254,6 +255,103 @@ class GeminiClient(
             )
 
             Result.success(mergedProduct)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Busca información de catálogo precisa para un producto de bebé a partir de su código de barras (EAN-13, UPC).
+     */
+    suspend fun lookupProductByBarcode(
+        barcode: String,
+        apiKey: String
+    ): Result<BabyProduct> = withContext(Dispatchers.IO) {
+        try {
+            val promptText = """
+                Eres un experto en catálogo de productos infantiles, farmacia pediátrica y artículos de bebé para Venezuela e importaciones.
+                Identifica el producto de bebé que corresponde exactamente al siguiente código de barras (EAN-13 o UPC): "$barcode".
+                Si reconoces el producto con exactitud, extrae sus datos fidedignos. Si no lo reconoces al 100%, deduce la variante regional (ej: prefijo 759 de Venezuela) y devuelve datos coherentes para su posterior verificación.
+                
+                Devuelve únicamente un objeto JSON con:
+                1. "nombre": Nombre comercial del producto.
+                2. "marca": Marca.
+                3. "modelo": Presentación o línea.
+                4. "categoria": CLOTHING, DIAPERS, WIPES_HYGIENE, FEEDING, CRIB_SLEEP, TRANSPORT, HEALTH o HOSPITAL_BAG.
+                5. "talla_etapa": RN, P, M, G, XG o según aplique.
+                6. "paquetes": 1.
+                7. "unidades_por_paquete": Unidades típicas del empaque.
+                8. "unidades_totales": unidades_por_paquete.
+                9. "ingredientes_materiales": Ingredientes o materiales típicos.
+                10. "riesgos_advertencias": Advertencias pediátricas.
+                11. "nivel_seguridad": "SAFE", "CAUTION" o "WARNING".
+                12. "fabricado_en": País de origen.
+                13. "fecha_vencimiento": "".
+                14. "codigo_barra": "$barcode".
+                15. "variante_pais": Si es prefijo 759 "Venezuela 🇻🇪 (GS1 Nacional)", u otro país.
+                16. "edad_util": Rango de edad útil si aplica.
+                17. "opinion_consejo": Breve consejo pediátrico.
+            """.trimIndent()
+
+            val requestBody = JSONObject().apply {
+                val contents = JSONArray().apply {
+                    put(JSONObject().apply {
+                        val parts = JSONArray().apply {
+                            put(JSONObject().put("text", promptText))
+                        }
+                        put("parts", parts)
+                    })
+                }
+                put("contents", contents)
+                put("generationConfig", JSONObject().apply {
+                    put("response_mime_type", "application/json")
+                    put("temperature", 0.1)
+                })
+            }
+
+            val responseString = executePost(requestBody.toString(), apiKey)
+            val jsonResponse = JSONObject(responseString)
+            val rawText = jsonResponse.getJSONArray("candidates").getJSONObject(0)
+                .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text")
+
+            val cleanJson = rawText.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            val productJson = JSONObject(cleanJson)
+
+            val categoryString = productJson.optString("categoria", "DIAPERS")
+            val resolvedCategory = runCatching {
+                ProductCategory.valueOf(categoryString.uppercase().trim())
+            }.getOrDefault(ProductCategory.DIAPERS)
+
+            val safetyString = productJson.optString("nivel_seguridad", "SAFE")
+            val resolvedSafety = runCatching {
+                ProductSafetyLevel.valueOf(safetyString.uppercase().trim())
+            }.getOrDefault(ProductSafetyLevel.SAFE)
+
+            val parsedPacks = productJson.optInt("paquetes", 1).coerceAtLeast(1)
+            val parsedUnitsPerPack = productJson.optInt("unidades_por_paquete", 1).coerceAtLeast(1)
+
+            val product = BabyProduct(
+                id = UUID.randomUUID().toString(),
+                name = productJson.optString("nombre", "Producto escaneado"),
+                brand = productJson.optString("marca", ""),
+                model = productJson.optString("modelo", ""),
+                category = resolvedCategory,
+                stageSize = productJson.optString("talla_etapa", ""),
+                packageCount = parsedPacks,
+                unitsPerPackage = parsedUnitsPerPack,
+                quantityCurrent = parsedPacks * parsedUnitsPerPack,
+                ingredients = productJson.optString("ingredientes_materiales", ""),
+                risksAndWarnings = productJson.optString("riesgos_advertencias", ""),
+                safetyLevel = resolvedSafety,
+                manufacturedIn = productJson.optString("fabricado_en", ""),
+                expirationDate = productJson.optString("fecha_vencimiento", ""),
+                barcode = barcode,
+                countryVariant = productJson.optString("variante_pais", com.example.llegadadelbebe.core.util.BarcodeHelper.resolveCountryVariant(barcode, "")),
+                usefulUntilAge = productJson.optString("edad_util", ""),
+                geminiOpinion = productJson.optString("opinion_consejo", "")
+            )
+
+            Result.success(product)
         } catch (e: Exception) {
             Result.failure(e)
         }

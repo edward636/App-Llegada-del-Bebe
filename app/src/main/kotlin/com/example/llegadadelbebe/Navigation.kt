@@ -33,8 +33,8 @@ import com.example.llegadadelbebe.presentation.inventory.InventoryViewModel
 import com.example.llegadadelbebe.presentation.settings.SettingsScreen
 import kotlinx.coroutines.launch
 
-const val APP_VERSION_CODE = 10
-const val APP_VERSION_NAME = "1.0.9"
+const val APP_VERSION_CODE = 11
+const val APP_VERSION_NAME = "1.1.0"
 
 @Composable
 fun MainNavigation() {

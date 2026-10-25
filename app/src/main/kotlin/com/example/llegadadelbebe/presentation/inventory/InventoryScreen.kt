@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,6 +45,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -70,6 +72,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.llegadadelbebe.core.util.BarcodeHelper
 import com.example.llegadadelbebe.core.util.BarcodeScannerHelper
 import com.example.llegadadelbebe.domain.model.BabyProduct
 import kotlinx.coroutines.launch
@@ -103,6 +106,8 @@ fun InventoryScreen(
     var cameraErrorMessage by remember { mutableStateOf("") }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
     var isScanningBackPhoto by remember { mutableStateOf(false) }
+    var isScanningBarcodeOnly by remember { mutableStateOf(false) }
+    var pendingProductMissingInfo by remember { mutableStateOf<BabyProduct?>(null) }
 
     // Lanzador de Cámara HD (1280px para OCR de Gemini + miniatura 300px para el mosaico + escáner de código de barra)
     val highResCameraLauncher = rememberLauncherForActivityResult(
@@ -121,29 +126,56 @@ fun InventoryScreen(
                         bmp?.let { BarcodeScannerHelper.scanBarcode(it) }
                     }.getOrNull()
 
-                    val current = geminiProductToConfirm
-                    if (isScanningBackPhoto && current != null) {
-                        isScanningBackPhoto = false
-                        viewModel.complementProductDetailsWithPhoto(
-                            base64Image = highRes,
-                            existingProduct = current,
-                            detectedBarcode = barcode,
-                            apiKey = geminiApiKey
-                        ) { updated ->
-                            geminiProductToConfirm = updated
+                    if (isScanningBarcodeOnly) {
+                        isScanningBarcodeOnly = false
+                        if (!barcode.isNullOrBlank()) {
+                            val current = geminiProductToConfirm
+                            if (current != null) {
+                                val variant = BarcodeHelper.resolveCountryVariant(barcode, current.manufacturedIn)
+                                geminiProductToConfirm = current.copy(barcode = barcode, countryVariant = variant)
+                            } else {
+                                viewModel.lookupBarcodeWithGemini(barcode, geminiApiKey) { lookedUp ->
+                                    if (lookedUp != null) {
+                                        geminiProductToConfirm = lookedUp
+                                    } else {
+                                        cameraErrorMessage = "Código leído: $barcode. Ingresa el nombre para completar la ficha."
+                                    }
+                                }
+                            }
+                        } else {
+                            cameraErrorMessage = "No se detectó código de barras en la imagen. Intenta enfocar más de cerca."
                         }
                     } else {
-                        isScanningBackPhoto = false
-                        viewModel.analyzePhoto(
-                            base64Image = highRes,
-                            thumbnailBase64 = thumb,
-                            detectedBarcode = barcode,
-                            apiKey = geminiApiKey
-                        ) { extracted ->
-                            if (extracted != null) {
-                                geminiProductToConfirm = extracted
-                            } else {
-                                cameraErrorMessage = "No se pudo extraer la información del producto. Intenta con más luz o usa registro manual."
+                        val current = geminiProductToConfirm
+                        if (isScanningBackPhoto && current != null) {
+                            isScanningBackPhoto = false
+                            viewModel.complementProductDetailsWithPhoto(
+                                base64Image = highRes,
+                                existingProduct = current,
+                                detectedBarcode = barcode,
+                                apiKey = geminiApiKey
+                            ) { updated ->
+                                geminiProductToConfirm = updated
+                            }
+                        } else {
+                            isScanningBackPhoto = false
+                            viewModel.analyzePhoto(
+                                base64Image = highRes,
+                                thumbnailBase64 = thumb,
+                                detectedBarcode = barcode,
+                                apiKey = geminiApiKey
+                            ) { extracted ->
+                                if (extracted != null) {
+                                    val needsBackPhoto = extracted.missingInfoPrompt.isNotBlank() ||
+                                        (extracted.category in listOf(ProductCategory.WIPES_HYGIENE, ProductCategory.HEALTH, ProductCategory.FEEDING) && extracted.ingredients.isBlank())
+                                    if (needsBackPhoto) {
+                                        pendingProductMissingInfo = extracted
+                                    } else {
+                                        geminiProductToConfirm = extracted
+                                    }
+                                } else {
+                                    cameraErrorMessage = "No se pudo extraer la información del producto. Intenta con más luz o usa registro manual."
+                                }
                             }
                         }
                     }
@@ -211,7 +243,13 @@ fun InventoryScreen(
                             apiKey = geminiApiKey
                         ) { extracted ->
                             if (extracted != null) {
-                                geminiProductToConfirm = extracted
+                                val needsBackPhoto = extracted.missingInfoPrompt.isNotBlank() ||
+                                    (extracted.category in listOf(ProductCategory.WIPES_HYGIENE, ProductCategory.HEALTH, ProductCategory.FEEDING) && extracted.ingredients.isBlank())
+                                if (needsBackPhoto) {
+                                    pendingProductMissingInfo = extracted
+                                } else {
+                                    geminiProductToConfirm = extracted
+                                }
                             } else {
                                 cameraErrorMessage = "No se pudo analizar la foto de la galería."
                             }
@@ -406,6 +444,89 @@ fun InventoryScreen(
         }
     }
 
+    // Diálogo Inteligente: Solicita directamente la foto del reverso si faltan ingredientes o vencimiento
+    pendingProductMissingInfo?.let { missingProduct ->
+        Dialog(
+            onDismissRequest = {
+                geminiProductToConfirm = missingProduct
+                pendingProductMissingInfo = null
+            }
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(22.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFFFF3E0),
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("🔍", fontSize = 28.sp)
+                        }
+                    }
+                    Text(
+                        text = "¡${missingProduct.name} Detectado!",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "Para garantizar máxima exactitud médica y no suponer ingredientes ni vencimiento, Gemini necesita una foto de la parte posterior o empaque del producto.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+                        border = BorderStroke(1.dp, Color(0xFFFFB300))
+                    ) {
+                        Text(
+                            text = missingProduct.missingInfoPrompt.ifBlank {
+                                "Fotografía el reverso o lateral donde se aprecie la lista de ingredientes (INCI) o fecha de vencimiento."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFFE65100),
+                            modifier = Modifier.padding(12.dp),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    Button(
+                        onClick = {
+                            geminiProductToConfirm = missingProduct
+                            pendingProductMissingInfo = null
+                            isScanningBackPhoto = true
+                            launchCameraWithUri()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF57F17))
+                    ) {
+                        Text("📷 Tomar Foto del Reverso Ahora", color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            geminiProductToConfirm = missingProduct
+                            pendingProductMissingInfo = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Continuar solo con foto frontal")
+                    }
+                }
+            }
+        }
+    }
+
     // Ventana de Confirmación tras tomar la foto
     geminiProductToConfirm?.let { product ->
         ConfirmGeminiProductDialog(
@@ -417,6 +538,18 @@ fun InventoryScreen(
             onScanBackPhoto = {
                 isScanningBackPhoto = true
                 launchCameraWithUri()
+            },
+            onScanBarcode = {
+                val hasCamPerm = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.CAMERA
+                ) == PackageManager.PERMISSION_GRANTED
+                if (hasCamPerm) {
+                    isScanningBarcodeOnly = true
+                    launchCameraWithUri()
+                } else {
+                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                }
             },
             onConfirm = { confirmed ->
                 viewModel.addProduct(confirmed, googleSheetUrl)
@@ -447,6 +580,18 @@ fun InventoryScreen(
         AddProductDialog(
             defaultRegisteredBy = activeUser,
             onDismiss = { showAddDialog = false },
+            onScanBarcode = {
+                val hasCamPerm = ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.CAMERA
+                ) == PackageManager.PERMISSION_GRANTED
+                if (hasCamPerm) {
+                    isScanningBarcodeOnly = true
+                    launchCameraWithUri()
+                } else {
+                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                }
+            },
             onSave = { newProduct ->
                 viewModel.addProduct(newProduct, googleSheetUrl)
                 showAddDialog = false

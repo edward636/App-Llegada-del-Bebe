@@ -176,4 +176,43 @@ class PregnancyAndZodiacTest {
         val fallbackVariant = BarcodeHelper.resolveCountryVariant("", "Venezuela")
         assertTrue(fallbackVariant.contains("Venezuela 🇻🇪"))
     }
+
+    @Test
+    fun testEvaluateConsumables_GeneralConsumablesSummaryAndHospitalBag() {
+        val useCase = EvaluateConsumablesUseCase()
+        val products = listOf(
+            BabyProduct(
+                id = "p1",
+                name = "Pampers RN",
+                category = ProductCategory.DIAPERS,
+                stageSize = "RN",
+                packageCount = 3,
+                unitsPerPackage = 36, // 3 * 36 = 108 pañales RN
+                status = ProductStatus.PURCHASED
+            ),
+            BabyProduct(
+                id = "p2",
+                name = "Toallitas Huggies 80u",
+                category = ProductCategory.WIPES_HYGIENE,
+                packageCount = 2,
+                unitsPerPackage = 80, // 2 * 80 = 160 toallitas
+                status = ProductStatus.PURCHASED
+            )
+        )
+
+        val summary = useCase.execute(products)
+        val general = summary.generalSummary
+        org.junit.Assert.assertNotNull(general)
+        assertEquals(3, general?.totalDiaperPackages)
+        assertEquals(108, general?.totalDiaperUnits)
+        assertEquals(108, general?.sizeRn?.unitsCount)
+        assertEquals(2, general?.totalWipesPackages)
+        assertEquals(160, general?.totalWipesUnits)
+
+        // Verificar secciones de la maleta del parto
+        assertEquals(3, summary.hospitalBagSections.size)
+        assertTrue(summary.hospitalBagSections.any { it.id == "baby" })
+        assertTrue(summary.hospitalBagSections.any { it.id == "mom" })
+        assertTrue(summary.hospitalBagSections.any { it.id == "dad" })
+    }
 }

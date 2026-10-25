@@ -132,11 +132,27 @@ class LocalPreferences(context: Context) {
         }
     }
 
+    fun getHospitalBagCheckedIds(): Set<String> {
+        return prefs.getStringSet(KEY_HOSPITAL_BAG_CHECKED, emptySet()) ?: emptySet()
+    }
+
+    fun toggleHospitalBagItemChecked(itemId: String): Set<String> {
+        val current = getHospitalBagCheckedIds().toMutableSet()
+        if (current.contains(itemId)) {
+            current.remove(itemId)
+        } else {
+            current.add(itemId)
+        }
+        prefs.edit().putStringSet(KEY_HOSPITAL_BAG_CHECKED, current).apply()
+        return current
+    }
+
     companion object {
         private const val PREFS_NAME = "llegada_del_bebe_prefs"
         private const val KEY_BABY_NAME = "baby_name"
         private const val KEY_LMP_EPOCH_DAY = "lmp_epoch_day"
         private const val KEY_ACTIVE_USER = "active_user"
         private const val KEY_INVENTORY_CACHE = "inventory_cache_json"
+        private const val KEY_HOSPITAL_BAG_CHECKED = "hospital_bag_checked_ids"
     }
 }

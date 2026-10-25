@@ -31,6 +31,7 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -68,6 +69,7 @@ fun ConfirmGeminiProductDialog(
     initialProduct: BabyProduct,
     onDismiss: () -> Unit,
     onScanBackPhoto: (() -> Unit)? = null,
+    onScanBarcode: (() -> Unit)? = null,
     onConfirm: (BabyProduct) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -523,7 +525,14 @@ fun ConfirmGeminiProductDialog(
                             countryVariant = BarcodeHelper.resolveCountryVariant(it, manufacturedIn)
                         },
                         label = { Text("Código de Barras (EAN)") },
-                        placeholder = { Text("Ej: 759...") },
+                        placeholder = { Text("Toca 📷 para escanear") },
+                        trailingIcon = {
+                            if (onScanBarcode != null) {
+                                IconButton(onClick = onScanBarcode) {
+                                    Text("📷", fontSize = 16.sp)
+                                }
+                            }
+                        },
                         modifier = Modifier.weight(1.2f),
                         shape = RoundedCornerShape(12.dp)
                     )

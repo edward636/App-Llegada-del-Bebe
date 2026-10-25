@@ -183,6 +183,39 @@ class InventoryViewModel(
         }
     }
 
+    /**
+     * Busca información de un producto directamente a partir de su código de barras escaneado.
+     */
+    fun lookupBarcodeWithGemini(
+        barcode: String,
+        apiKey: String,
+        onResult: (BabyProduct?) -> Unit
+    ) {
+        viewModelScope.launch {
+            _isAnalyzingPhoto.value = true
+            val result = geminiClient.lookupProductByBarcode(barcode, apiKey)
+            if (result.isSuccess) {
+                var product = result.getOrNull()?.copy(registeredBy = _activeUser.value)
+                if (product != null) {
+                    val catalogThumb = CatalogImageFetcher.fetchCleanCatalogThumbnail(
+                        name = product.name,
+                        brand = product.brand,
+                        model = product.model,
+                        category = product.category.displayName
+                    )
+                    if (catalogThumb != null) {
+                        product = product.copy(photoBase64 = catalogThumb)
+                    }
+                }
+                _isAnalyzingPhoto.value = false
+                onResult(product)
+            } else {
+                _isAnalyzingPhoto.value = false
+                onResult(null)
+            }
+        }
+    }
+
     fun searchCatalogImage(
         name: String,
         brand: String,
