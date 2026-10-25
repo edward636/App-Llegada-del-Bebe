@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Fondo degrade azul cielo suave para bebé varón -->
+    <path
+        android:fillColor="#4A90E2"
+        android:pathData="M0,0h108v108h-108z" />
+    
+    <!-- Círculo interior suave -->
+    <path
+        android:fillColor="#5EA0EC"
+        android:pathData="M54,54m-42,0a42,42 0,1 1,84 0a42,42 0,1 1,-84 0" />
+
+    <!-- Estrellas decorativas tenues de fondo -->
+    <path
+        android:fillColor="#6EB0FC"
+        android:pathData="M24,28l2,4l4,2l-4,2l-2,4l-2,-4l-4,-2l4,-2z" />
+    <path
+        android:fillColor="#6EB0FC"
+        android:pathData="M84,32l1.5,3l3,1.5l-3,1.5l-1.5,3l-1.5,-3l-3,-1.5l3,-1.5z" />
+    <path
+        android:fillColor="#6EB0FC"
+        android:pathData="M82,78l2,4l4,2l-4,2l-2,4l-2,-4l-4,-2l4,-2z" />
+</vector>
