@@ -64,6 +64,7 @@ class GeminiClient(
                 10. "fabricado_en": País o lugar de fabricación si aparece en el empaque (ej: Perú, Brasil, Irlanda, EE.UU., Colombia, o "No especificado en cara visible").
                 11. "fecha_vencimiento": Fecha de vencimiento o caducidad visible (ej: 12/2027) o "N/A" si no vence.
                 12. "opinion_consejo": Explicación detallada y afectuosa para Edward y Britney sobre para qué sirve, cómo aprovecharlo mejor con su bebé y recomendaciones prácticas de uso.
+                13. "busqueda_catalogo": Término de búsqueda optimizado y limpio para encontrar la imagen oficial o foto de catálogo con fondo blanco del producto en internet (ej: "Pampers Premium Care Recién Nacido", "Mustela Crema Facial Hydra Bebé").
             """.trimIndent()
 
             val requestBody = JSONObject().apply {
@@ -134,8 +135,9 @@ class GeminiClient(
                 manufacturedIn = productJson.optString("fabricado_en", productJson.optString("manufacturedIn", "")),
                 expirationDate = productJson.optString("fecha_vencimiento", productJson.optString("expirationDate", "N/A")),
                 photoBase64 = thumbnailBase64,
+                rawPhotoBase64 = thumbnailBase64,
                 geminiOpinion = productJson.optString("opinion_consejo", productJson.optString("opinion", "")),
-                notes = productJson.optString("detalles", "")
+                notes = productJson.optString("busqueda_catalogo", productJson.optString("detalles", ""))
             )
 
             Result.success(product)

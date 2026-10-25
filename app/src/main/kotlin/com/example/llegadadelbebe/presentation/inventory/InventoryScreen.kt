@@ -11,8 +11,10 @@ import android.net.Uri
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -334,16 +336,16 @@ fun InventoryScreen(
     // Modal de Análisis de Gemini en Progreso
     if (isAnalyzingPhoto) {
         Dialog(onDismissRequest = {}) {
-            Card(shape = RoundedCornerShape(16.dp), modifier = Modifier.fillMaxWidth()) {
+            Card(shape = RoundedCornerShape(18.dp), modifier = Modifier.fillMaxWidth()) {
                 Column(
                     modifier = Modifier.padding(24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                    Text("🤖 Gemini 3.8 está analizando la foto...", fontWeight = FontWeight.Bold)
+                    Text("🤖 Gemini 3.8 está analizando el producto...", fontWeight = FontWeight.Bold)
                     Text(
-                        text = "Extrayendo nombre, modelo, ingredientes, riesgos dermatológicos, origen y vencimiento...",
+                        text = "Extrayendo ingredientes, riesgos dermatológicos y buscando una foto limpia de catálogo en internet... ✨",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -422,24 +424,51 @@ fun ProductMosaicTile(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
     ) {
+        val isCatalogPhoto = product.photoBase64.isNotBlank() && product.photoBase64 != product.rawPhotoBase64
+
         Column(modifier = Modifier.fillMaxWidth()) {
-            // 1. Miniatura de la Foto del Producto o Ícono de Categoría
+            // 1. Miniatura de la Foto del Producto (Estilo Catálogo E-Commerce) o Ícono de Categoría
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(115.dp)
-                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)),
+                    .height(125.dp)
+                    .background(Color.White)
+                    .border(
+                        BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        RoundedCornerShape(topStart = 18.dp, topEnd = 18.dp)
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 if (thumbBitmap != null) {
                     Image(
                         bitmap = thumbBitmap.asImageBitmap(),
                         contentDescription = product.name,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(6.dp),
+                        contentScale = ContentScale.Fit
                     )
                 } else {
-                    Text(text = product.category.icon, fontSize = 40.sp)
+                    Text(text = product.category.icon, fontSize = 42.sp)
+                }
+
+                // Insignia Superior Izquierda: Destello de Foto de Catálogo Limpia
+                if (isCatalogPhoto) {
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(6.dp),
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f)
+                    ) {
+                        Text(
+                            text = "✨ Catálogo",
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
 
                 // Insignia de Seguridad en esquina superior derecha

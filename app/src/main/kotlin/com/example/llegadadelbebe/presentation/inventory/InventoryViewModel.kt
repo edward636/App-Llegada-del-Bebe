@@ -2,6 +2,7 @@ package com.example.llegadadelbebe.presentation.inventory
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.llegadadelbebe.data.remote.CatalogImageFetcher
 import com.example.llegadadelbebe.data.remote.GeminiClient
 import com.example.llegadadelbebe.data.repository.BabyInventoryRepository
 import com.example.llegadadelbebe.data.repository.CloudSyncStatus
@@ -108,13 +109,58 @@ class InventoryViewModel(
                 thumbnailBase64 = thumbnailBase64,
                 apiKey = apiKey
             )
-            _isAnalyzingPhoto.value = false
             if (result.isSuccess) {
-                val extracted = result.getOrNull()?.copy(registeredBy = _activeUser.value)
+                var extracted = result.getOrNull()?.copy(registeredBy = _activeUser.value)
+                if (extracted != null) {
+                    // Buscar imagen de catálogo limpia (fondo blanco e-commerce) en internet
+                    val catalogThumb = CatalogImageFetcher.fetchCleanCatalogThumbnail(
+                        name = extracted.name,
+                        brand = extracted.brand,
+                        model = extracted.model,
+                        category = extracted.category.displayName
+                    )
+                    if (catalogThumb != null) {
+                        extracted = extracted.copy(
+                            photoBase64 = catalogThumb,
+                            rawPhotoBase64 = thumbnailBase64
+                        )
+                    } else {
+                        extracted = extracted.copy(
+                            photoBase64 = thumbnailBase64,
+                            rawPhotoBase64 = thumbnailBase64
+                        )
+                    }
+                }
+                _isAnalyzingPhoto.value = false
                 onComplete(extracted)
             } else {
+                _isAnalyzingPhoto.value = false
                 onComplete(null)
             }
+        }
+    }
+
+    fun searchCatalogImage(
+        name: String,
+        brand: String,
+        model: String,
+        category: String = "",
+        onResult: (String?) -> Unit
+    ) {
+        viewModelScope.launch {
+            val thumb = CatalogImageFetcher.fetchCleanCatalogThumbnail(name, brand, model, category)
+            onResult(thumb)
+        }
+    }
+
+    fun searchMultipleCatalogImages(
+        query: String,
+        limit: Int = 4,
+        onResult: (List<String>) -> Unit
+    ) {
+        viewModelScope.launch {
+            val list = CatalogImageFetcher.searchMultipleThumbnails(query, limit)
+            onResult(list)
         }
     }
 }

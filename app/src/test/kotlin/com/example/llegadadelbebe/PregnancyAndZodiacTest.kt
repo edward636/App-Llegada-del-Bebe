@@ -4,6 +4,7 @@ import com.example.llegadadelbebe.core.security.SecureConfig
 import com.example.llegadadelbebe.core.update.OtaUpdateManager
 import com.example.llegadadelbebe.core.util.PregnancyCalculator
 import com.example.llegadadelbebe.core.util.ZodiacPredictor
+import com.example.llegadadelbebe.data.remote.CatalogImageFetcher
 import com.example.llegadadelbebe.domain.model.BabyProduct
 import com.example.llegadadelbebe.domain.model.ProductCategory
 import com.example.llegadadelbebe.domain.model.StockStatus
@@ -103,5 +104,32 @@ class PregnancyAndZodiacTest {
             "https://script.google.com/macros/s/AKfycbwrrOvaR2CYUMhXkFnfXqk-NpdkW6vS5vjpVCJbGFLewLlgpW4nk0tdLowmHUSLhe1_/exec",
             SecureConfig.getGoogleSheetUrl()
         )
+    }
+
+    @Test
+    fun testCatalogImageFetcher_BuildsCleanQuery() {
+        val q1 = CatalogImageFetcher.buildCleanQuery(
+            name = "Pañales Premium Care",
+            brand = "Pampers",
+            model = "Recién Nacido"
+        )
+        assertTrue(q1.contains("Pampers"))
+        assertTrue(q1.contains("fondo blanco"))
+
+        val q2 = CatalogImageFetcher.buildCleanQuery(
+            name = "Mustela Crema Facial Hydra Bebe",
+            brand = "Mustela",
+            model = ""
+        )
+        assertTrue(q2.contains("Mustela"))
+        assertTrue(q2.contains("fondo blanco"))
+    }
+
+    @Test
+    fun testCatalogImageFetcher_SearchesValidImageUrls() {
+        val urls = CatalogImageFetcher.searchCatalogImageUrls("Pampers Premium Care fondo blanco", maxResults = 3)
+        // Bing Image search must return valid http/https image links
+        assertTrue(urls.isNotEmpty())
+        assertTrue(urls.first().startsWith("http"))
     }
 }

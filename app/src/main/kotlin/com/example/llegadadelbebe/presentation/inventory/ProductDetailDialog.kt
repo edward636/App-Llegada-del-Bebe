@@ -2,8 +2,12 @@ package com.example.llegadadelbebe.presentation.inventory
 
 import android.graphics.BitmapFactory
 import android.util.Base64
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -23,7 +28,9 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -33,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,9 +53,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.llegadadelbebe.data.remote.CatalogImageFetcher
 import com.example.llegadadelbebe.domain.model.BabyProduct
 import com.example.llegadadelbebe.domain.model.ProductSafetyLevel
 import com.example.llegadadelbebe.domain.model.ProductStatus
+import kotlinx.coroutines.launch
 
 /**
  * Vista de detalle completa de un producto al tocar su tarjeta en el mosaico.
@@ -62,14 +72,26 @@ fun ProductDetailDialog(
     onUpdateProduct: (BabyProduct) -> Unit,
     onDeleteProduct: (String) -> Unit
 ) {
+    val coroutineScope = rememberCoroutineScope()
     var quantityCurrent by remember(product.id) { mutableIntStateOf(product.quantityCurrent) }
     var quantityTarget by remember(product.id) { mutableIntStateOf(product.quantityTarget) }
     var status by remember(product.id) { mutableStateOf(product.status) }
     var confirmDelete by remember { mutableStateOf(false) }
 
-    val decodedBitmap = remember(product.photoBase64) {
-        decodeBase64ToBitmap(product.photoBase64)
+    var currentPhotoBase64 by remember(product.id, product.photoBase64) { mutableStateOf(product.photoBase64) }
+    var isShowingRawPhoto by remember { mutableStateOf(false) }
+    val rawPhotoBase64 = product.rawPhotoBase64
+
+    var isSearchingCatalogImage by remember { mutableStateOf(false) }
+    var searchCandidates by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showCandidatesRow by remember { mutableStateOf(false) }
+
+    val activePhotoToDisplay = if (isShowingRawPhoto && rawPhotoBase64.isNotBlank()) rawPhotoBase64 else currentPhotoBase64
+    val decodedBitmap = remember(activePhotoToDisplay) {
+        decodeBase64ToBitmap(activePhotoToDisplay)
     }
+
+    val isCatalogActive = currentPhotoBase64.isNotBlank() && currentPhotoBase64 != rawPhotoBase64
 
     val safetyColor = when (product.safetyLevel) {
         ProductSafetyLevel.SAFE -> Color(0xFF2E7D32)
@@ -95,21 +117,27 @@ fun ProductDetailDialog(
                     .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // 1. Encabezado Visual / Fotografía del Producto
+                // 1. Encabezado Visual / Fotografía del Producto (Estilo Catálogo E-Commerce)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(190.dp)
+                        .height(180.dp)
                         .clip(RoundedCornerShape(18.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)),
+                        .background(Color.White)
+                        .border(
+                            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                            RoundedCornerShape(18.dp)
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     if (decodedBitmap != null) {
                         Image(
                             bitmap = decodedBitmap.asImageBitmap(),
                             contentDescription = product.name,
-                            modifier = Modifier.fillMaxWidth(),
-                            contentScale = ContentScale.Crop
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(8.dp),
+                            contentScale = ContentScale.Fit
                         )
                     } else {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -121,6 +149,23 @@ fun ProductDetailDialog(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                    }
+
+                    // Insignia Superior Izquierda: Catálogo vs Cámara
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(10.dp),
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isCatalogActive && !isShowingRawPhoto) MaterialTheme.colorScheme.primary else Color(0xFF546E7A)
+                    ) {
+                        Text(
+                            text = if (isCatalogActive && !isShowingRawPhoto) "✨ Foto Catálogo Limpio" else "📷 Foto Tomada",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        )
                     }
 
                     // Insignia flotante de Seguridad Pediátrica
@@ -138,6 +183,109 @@ fun ProductDetailDialog(
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp
                         )
+                    }
+                }
+
+                // Selector de Imagen y Botón de Búsqueda de Catálogo
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (rawPhotoBase64.isNotBlank() && currentPhotoBase64.isNotBlank() && currentPhotoBase64 != rawPhotoBase64) {
+                        FilterChip(
+                            selected = !isShowingRawPhoto,
+                            onClick = { isShowingRawPhoto = false },
+                            label = { Text("✨ Catálogo", fontSize = 11.sp) }
+                        )
+                        FilterChip(
+                            selected = isShowingRawPhoto,
+                            onClick = { isShowingRawPhoto = true },
+                            label = { Text("📷 Cámara", fontSize = 11.sp) }
+                        )
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            if (!isSearchingCatalogImage) {
+                                isSearchingCatalogImage = true
+                                coroutineScope.launch {
+                                    val query = listOf(product.brand, product.name, product.model)
+                                        .filter { it.isNotBlank() }.joinToString(" ")
+                                    val list = CatalogImageFetcher.searchMultipleThumbnails(query, limit = 4)
+                                    searchCandidates = list
+                                    showCandidatesRow = list.isNotEmpty()
+                                    isSearchingCatalogImage = false
+                                }
+                            }
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        if (isSearchingCatalogImage) {
+                            CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(4.dp))
+                        }
+                        Text("🔍 Buscar catálogo", fontSize = 11.sp)
+                    }
+                }
+
+                // Galería de candidatos encontrados si se buscó
+                if (showCandidatesRow && searchCandidates.isNotEmpty()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "Toca para aplicar foto limpia de catálogo:",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                searchCandidates.forEach { candidateBase64 ->
+                                    val bmp = remember(candidateBase64) { decodeBase64ToBitmap(candidateBase64) }
+                                    if (bmp != null) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(68.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Color.White)
+                                                .border(
+                                                    BorderStroke(
+                                                        if (currentPhotoBase64 == candidateBase64) 2.dp else 1.dp,
+                                                        if (currentPhotoBase64 == candidateBase64) MaterialTheme.colorScheme.primary else Color.LightGray
+                                                    ),
+                                                    RoundedCornerShape(8.dp)
+                                                )
+                                                .clickable {
+                                                    currentPhotoBase64 = candidateBase64
+                                                    isShowingRawPhoto = false
+                                                    showCandidatesRow = false
+                                                    onUpdateProduct(product.copy(photoBase64 = candidateBase64))
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Image(
+                                                bitmap = bmp.asImageBitmap(),
+                                                contentDescription = null,
+                                                modifier = Modifier
+                                                    .size(64.dp)
+                                                    .padding(4.dp),
+                                                contentScale = ContentScale.Fit
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -386,7 +534,8 @@ fun ProductDetailDialog(
                                 product.copy(
                                     quantityCurrent = quantityCurrent,
                                     quantityTarget = quantityTarget,
-                                    status = status
+                                    status = status,
+                                    photoBase64 = currentPhotoBase64
                                 )
                             )
                         },

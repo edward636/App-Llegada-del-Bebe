@@ -54,7 +54,8 @@ data class BabyProduct(
     val safetyLevel: ProductSafetyLevel = ProductSafetyLevel.SAFE,
     val manufacturedIn: String = "",  // País o lugar de origen/fabricación
     val expirationDate: String = "",  // Fecha de vencimiento/caducidad (si aplica)
-    val photoBase64: String = "",     // Miniatura optimizada en Base64 de la foto tomada al producto
+    val photoBase64: String = "",     // Miniatura optimizada en Base64 de la foto de catálogo limpia o de cámara
+    val rawPhotoBase64: String = "",  // Miniatura de la foto real tomada con la cámara (respaldo)
     val notes: String = "",
     val geminiOpinion: String = "",   // Consejo u opinión extraído por Gemini 3.8
     val registeredBy: String = "",    // "Papá (Edward)" o "Mamá (Britney)"

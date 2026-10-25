@@ -66,6 +66,7 @@ class LocalPreferences(context: Context) {
                     put("manufacturedIn", item.manufacturedIn)
                     put("expirationDate", item.expirationDate)
                     put("photoBase64", item.photoBase64)
+                    put("rawPhotoBase64", item.rawPhotoBase64)
                     put("notes", item.notes)
                     put("geminiOpinion", item.geminiOpinion)
                     put("registeredBy", item.registeredBy)
@@ -108,6 +109,7 @@ class LocalPreferences(context: Context) {
                         manufacturedIn = obj.optString("manufacturedIn", ""),
                         expirationDate = obj.optString("expirationDate", "N/A"),
                         photoBase64 = obj.optString("photoBase64", ""),
+                        rawPhotoBase64 = obj.optString("rawPhotoBase64", ""),
                         notes = obj.optString("notes", ""),
                         geminiOpinion = obj.optString("geminiOpinion", ""),
                         registeredBy = obj.optString("registeredBy", "Papá (Edward)")
