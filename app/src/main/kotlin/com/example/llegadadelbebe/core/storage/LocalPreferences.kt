@@ -3,6 +3,7 @@ package com.example.llegadadelbebe.core.storage
 import android.content.Context
 import com.example.llegadadelbebe.domain.model.BabyProduct
 import com.example.llegadadelbebe.domain.model.ProductCategory
+import com.example.llegadadelbebe.domain.model.ProductSafetyLevel
 import com.example.llegadadelbebe.domain.model.ProductStatus
 import org.json.JSONArray
 import org.json.JSONObject
@@ -13,7 +14,7 @@ import java.time.LocalDate
  * - Nombre del bebé
  * - Fecha de Última Regla (FUR / FUM)
  * - Usuario activo en este teléfono (Papá Edward o Mamá Britney)
- * - Caché local del inventario para funcionamiento Offline instantáneo
+ * - Caché local del inventario (incluyendo foto miniatura, riesgos e ingredientes) para funcionamiento Offline instantáneo
  */
 class LocalPreferences(context: Context) {
 
@@ -60,8 +61,11 @@ class LocalPreferences(context: Context) {
                     put("quantityTarget", item.quantityTarget)
                     put("status", item.status.name)
                     put("ingredients", item.ingredients)
+                    put("risksAndWarnings", item.risksAndWarnings)
+                    put("safetyLevel", item.safetyLevel.name)
                     put("manufacturedIn", item.manufacturedIn)
                     put("expirationDate", item.expirationDate)
+                    put("photoBase64", item.photoBase64)
                     put("notes", item.notes)
                     put("geminiOpinion", item.geminiOpinion)
                     put("registeredBy", item.registeredBy)
@@ -83,6 +87,7 @@ class LocalPreferences(context: Context) {
                 val obj = array.getJSONObject(i)
                 val catName = obj.optString("category", ProductCategory.CLOTHING.name)
                 val statusName = obj.optString("status", ProductStatus.PENDING.name)
+                val safetyName = obj.optString("safetyLevel", ProductSafetyLevel.SAFE.name)
                 list.add(
                     BabyProduct(
                         id = obj.optString("id"),
@@ -97,8 +102,12 @@ class LocalPreferences(context: Context) {
                         status = runCatching { ProductStatus.valueOf(statusName) }
                             .getOrDefault(ProductStatus.PENDING),
                         ingredients = obj.optString("ingredients", ""),
+                        risksAndWarnings = obj.optString("risksAndWarnings", ""),
+                        safetyLevel = runCatching { ProductSafetyLevel.valueOf(safetyName) }
+                            .getOrDefault(ProductSafetyLevel.SAFE),
                         manufacturedIn = obj.optString("manufacturedIn", ""),
                         expirationDate = obj.optString("expirationDate", "N/A"),
+                        photoBase64 = obj.optString("photoBase64", ""),
                         notes = obj.optString("notes", ""),
                         geminiOpinion = obj.optString("geminiOpinion", ""),
                         registeredBy = obj.optString("registeredBy", "Papá (Edward)")

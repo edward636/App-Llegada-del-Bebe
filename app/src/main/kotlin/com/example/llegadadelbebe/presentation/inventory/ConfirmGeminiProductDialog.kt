@@ -1,7 +1,9 @@
 package com.example.llegadadelbebe.presentation.inventory
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,6 +24,7 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -31,13 +34,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.llegadadelbebe.domain.model.BabyProduct
 import com.example.llegadadelbebe.domain.model.ProductCategory
-import com.example.llegadadelbebe.domain.model.ProductStatus
+import com.example.llegadadelbebe.domain.model.ProductSafetyLevel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -53,18 +61,34 @@ fun ConfirmGeminiProductDialog(
     var stageSize by remember { mutableStateOf(initialProduct.stageSize) }
     var quantity by remember { mutableIntStateOf(initialProduct.quantityCurrent) }
     var ingredients by remember { mutableStateOf(initialProduct.ingredients) }
+    var risksAndWarnings by remember { mutableStateOf(initialProduct.risksAndWarnings) }
+    var safetyLevel by remember { mutableStateOf(initialProduct.safetyLevel) }
     var manufacturedIn by remember { mutableStateOf(initialProduct.manufacturedIn) }
     var expirationDate by remember { mutableStateOf(initialProduct.expirationDate) }
-    var notes by remember { mutableStateOf(initialProduct.notes) }
     var geminiOpinion by remember { mutableStateOf(initialProduct.geminiOpinion) }
     var registeredBy by remember { mutableStateOf(initialProduct.registeredBy.ifBlank { "Papá (Edward)" }) }
 
     var categoryDropdownExpanded by remember { mutableStateOf(false) }
 
-    Dialog(onDismissRequest = onDismiss) {
+    val previewBitmap = remember(initialProduct.photoBase64) {
+        decodeBase64ToBitmap(initialProduct.photoBase64)
+    }
+
+    val safetyColor = when (safetyLevel) {
+        ProductSafetyLevel.SAFE -> Color(0xFF2E7D32)
+        ProductSafetyLevel.CAUTION -> Color(0xFFEF6C00)
+        ProductSafetyLevel.WARNING -> Color(0xFFC62828)
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
         Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier
+                .fillMaxWidth(0.94f)
+                .padding(vertical = 16.dp),
+            shape = RoundedCornerShape(22.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
         ) {
@@ -75,16 +99,49 @@ fun ConfirmGeminiProductDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "✨ Confirmar Datos del Producto 🤖💙",
+                    text = "✨ Confirmar Análisis Gemini 3.8 🤖💙",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "Gemini 3.8 analizó la foto. Verifica o ajusta la información antes de guardarla:",
+                    text = "Verifica los datos únicos, ingredientes y evaluación de riesgos antes de guardar en el mosaico:",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                // Previsualización de la foto tomada + Semáforo de Seguridad
+                if (previewBitmap != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(150.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Image(
+                            bitmap = previewBitmap.asImageBitmap(),
+                            contentDescription = name,
+                            modifier = Modifier.fillMaxWidth(),
+                            contentScale = ContentScale.Crop
+                        )
+                        Surface(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(8.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            color = safetyColor
+                        ) {
+                            Text(
+                                text = "${safetyLevel.badgeIcon} ${safetyLevel.label}",
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
 
                 // Nombre
                 OutlinedTextField(
@@ -107,7 +164,7 @@ fun ConfirmGeminiProductDialog(
                     OutlinedTextField(
                         value = model,
                         onValueChange = { model = it },
-                        label = { Text("Modelo/Línea") },
+                        label = { Text("Modelo / Línea") },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     )
@@ -157,7 +214,7 @@ fun ConfirmGeminiProductDialog(
                     OutlinedTextField(
                         value = quantity.toString(),
                         onValueChange = { quantity = it.toIntOrNull() ?: 1 },
-                        label = { Text("Piezas/Unidades") },
+                        label = { Text("Piezas / Unidades") },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     )
@@ -168,7 +225,15 @@ fun ConfirmGeminiProductDialog(
                     value = ingredients,
                     onValueChange = { ingredients = it },
                     label = { Text("🌿 Ingredientes / Composición") },
-                    placeholder = { Text("Ej: Algodón Pima, sin alcohol...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                // Riesgos y Advertencias
+                OutlinedTextField(
+                    value = risksAndWarnings,
+                    onValueChange = { risksAndWarnings = it },
+                    label = { Text("⚠️ Riesgos, Alérgenos y Precauciones") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
@@ -199,7 +264,7 @@ fun ConfirmGeminiProductDialog(
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
                             Text(
-                                text = "💡 Consejo de Puericultura (Gemini):",
+                                text = "💡 Información Relevante y Consejo (Gemini):",
                                 fontWeight = FontWeight.Bold,
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.primary
@@ -254,6 +319,8 @@ fun ConfirmGeminiProductDialog(
                                         stageSize = stageSize.trim(),
                                         quantityCurrent = quantity.coerceAtLeast(1),
                                         ingredients = ingredients.trim(),
+                                        risksAndWarnings = risksAndWarnings.trim(),
+                                        safetyLevel = safetyLevel,
                                         manufacturedIn = manufacturedIn.trim(),
                                         expirationDate = expirationDate.trim(),
                                         geminiOpinion = geminiOpinion.trim(),
@@ -266,7 +333,7 @@ fun ConfirmGeminiProductDialog(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Guardar")
+                        Text("Guardar en Mosaico")
                     }
                 }
             }

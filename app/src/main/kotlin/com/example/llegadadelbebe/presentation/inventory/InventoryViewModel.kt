@@ -43,7 +43,9 @@ class InventoryViewModel(
             val matchesQuery = query.isBlank() ||
                     product.name.contains(query, ignoreCase = true) ||
                     product.brand.contains(query, ignoreCase = true) ||
+                    product.model.contains(query, ignoreCase = true) ||
                     product.ingredients.contains(query, ignoreCase = true) ||
+                    product.risksAndWarnings.contains(query, ignoreCase = true) ||
                     product.manufacturedIn.contains(query, ignoreCase = true)
             matchesCategory && matchesQuery
         }
@@ -75,6 +77,10 @@ class InventoryViewModel(
         repository.saveProduct(product.copy(registeredBy = _activeUser.value), googleSheetUrl)
     }
 
+    fun updateProduct(product: BabyProduct, googleSheetUrl: String?) {
+        repository.saveProduct(product.copy(updatedAt = System.currentTimeMillis()), googleSheetUrl)
+    }
+
     fun toggleProductStatus(product: BabyProduct, googleSheetUrl: String?) {
         val nextStatus = when (product.status) {
             ProductStatus.PENDING -> ProductStatus.PURCHASED
@@ -82,18 +88,24 @@ class InventoryViewModel(
             ProductStatus.HOSPITAL_PACKED -> ProductStatus.PURCHASED
             ProductStatus.GIFTED -> ProductStatus.HOSPITAL_PACKED
         }
-        repository.saveProduct(product.copy(status = nextStatus), googleSheetUrl)
+        repository.saveProduct(product.copy(status = nextStatus, updatedAt = System.currentTimeMillis()), googleSheetUrl)
     }
 
-    fun deleteProduct(productId: String) {
-        repository.deleteProduct(productId)
+    fun deleteProduct(productId: String, googleSheetUrl: String? = null) {
+        repository.deleteProduct(productId, googleSheetUrl)
     }
 
-    fun analyzePhoto(base64Image: String, apiKey: String, onComplete: (BabyProduct?) -> Unit) {
+    fun analyzePhoto(
+        base64Image: String,
+        thumbnailBase64: String = "",
+        apiKey: String,
+        onComplete: (BabyProduct?) -> Unit
+    ) {
         viewModelScope.launch {
             _isAnalyzingPhoto.value = true
             val result = geminiClient.extractProductFromImage(
                 base64Image = base64Image,
+                thumbnailBase64 = thumbnailBase64,
                 apiKey = apiKey
             )
             _isAnalyzingPhoto.value = false

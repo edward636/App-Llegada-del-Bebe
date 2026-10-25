@@ -27,6 +27,15 @@ enum class ProductStatus(val label: String) {
 }
 
 /**
+ * Nivel de seguridad dermatológica / pediátrica evaluado por Gemini 3.8.
+ */
+enum class ProductSafetyLevel(val label: String, val badgeIcon: String) {
+    SAFE("Seguro RN", "🟢"),
+    CAUTION("Precaución", "🟡"),
+    WARNING("Riesgo / Evitar RN", "🔴")
+}
+
+/**
  * Entidad principal de producto para el inventario del bebé.
  */
 @Serializable
@@ -41,8 +50,11 @@ data class BabyProduct(
     val quantityTarget: Int = 1,
     val status: ProductStatus = ProductStatus.PURCHASED,
     val ingredients: String = "",     // Ingredientes de cosméticos/alimentos o composición textil
+    val risksAndWarnings: String = "",// Riesgos, alérgenos, fragancias, advertencias de uso detectadas por Gemini
+    val safetyLevel: ProductSafetyLevel = ProductSafetyLevel.SAFE,
     val manufacturedIn: String = "",  // País o lugar de origen/fabricación
     val expirationDate: String = "",  // Fecha de vencimiento/caducidad (si aplica)
+    val photoBase64: String = "",     // Miniatura optimizada en Base64 de la foto tomada al producto
     val notes: String = "",
     val geminiOpinion: String = "",   // Consejo u opinión extraído por Gemini 3.8
     val registeredBy: String = "",    // "Papá (Edward)" o "Mamá (Britney)"

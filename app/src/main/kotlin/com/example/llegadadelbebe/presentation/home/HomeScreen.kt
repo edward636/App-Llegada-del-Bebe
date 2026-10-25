@@ -2,15 +2,16 @@ package com.example.llegadadelbebe.presentation.home
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -35,10 +36,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.llegadadelbebe.core.util.PregnancyStats
 import com.example.llegadadelbebe.core.util.ZodiacProfile
-
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
 
 @Composable
 fun HomeScreen(
@@ -261,7 +258,7 @@ fun InventorySummaryCard(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("Ver Lista")
+                    Text("🖼️ Mosaico", softWrap = false, maxLines = 1)
                 }
                 Button(
                     onClick = onAuditClick,
@@ -269,7 +266,7 @@ fun InventorySummaryCard(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("🔍 Consumibles")
+                    Text("📊 Qué nos Falta", softWrap = false, maxLines = 1)
                 }
             }
         }

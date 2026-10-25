@@ -4,6 +4,7 @@ import com.example.llegadadelbebe.core.storage.LocalPreferences
 import com.example.llegadadelbebe.data.remote.GoogleSheetsService
 import com.example.llegadadelbebe.domain.model.BabyProduct
 import com.example.llegadadelbebe.domain.model.ProductCategory
+import com.example.llegadadelbebe.domain.model.ProductSafetyLevel
 import com.example.llegadadelbebe.domain.model.ProductStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,7 +44,6 @@ class BabyInventoryRepository(
     fun initializeSheetUrl(url: String) {
         if (url.isNotBlank() && activeGoogleSheetUrl != url) {
             activeGoogleSheetUrl = url
-            // Sincronización inicial automática en segundo plano
             scope.launch {
                 syncFromGoogleSheets(url)
             }
@@ -65,7 +65,6 @@ class BabyInventoryRepository(
         _products.value = currentList
         localPreferences?.saveInventoryCache(currentList)
 
-        // Sincronización automática inmediata en segundo plano
         if (targetUrl.isNotBlank()) {
             scope.launch {
                 _syncStatus.value = CloudSyncStatus.SYNCING
@@ -76,12 +75,22 @@ class BabyInventoryRepository(
     }
 
     /**
-     * Elimina un producto por ID localmente y actualiza la caché.
+     * Elimina un producto localmente y sincroniza su eliminación en Google Sheets.
      */
-    fun deleteProduct(productId: String) {
+    fun deleteProduct(productId: String, googleSheetUrl: String? = null) {
+        val targetUrl = googleSheetUrl?.ifBlank { activeGoogleSheetUrl } ?: activeGoogleSheetUrl
+        val itemToRemove = _products.value.firstOrNull { it.id == productId }
         val updated = _products.value.filterNot { it.id == productId }
         _products.value = updated
         localPreferences?.saveInventoryCache(updated)
+
+        if (targetUrl.isNotBlank() && itemToRemove != null) {
+            scope.launch {
+                _syncStatus.value = CloudSyncStatus.SYNCING
+                val res = sheetsService.deleteProductRemote(targetUrl, itemToRemove)
+                _syncStatus.value = if (res.isSuccess) CloudSyncStatus.ONLINE else CloudSyncStatus.OFFLINE
+            }
+        }
     }
 
     /**
@@ -123,10 +132,12 @@ class BabyInventoryRepository(
             quantityTarget = 8,
             status = ProductStatus.PURCHASED,
             ingredients = "100% Algodón Pima Peruano hipoalergénico, broches sin níquel",
+            risksAndWarnings = "Sin riesgos dermatológicos. Lavar previamente con jabón neutro sin suavizante y retirar etiquetas internas que puedan rozar el cuello.",
+            safetyLevel = ProductSafetyLevel.SAFE,
             manufacturedIn = "Perú",
             expirationDate = "N/A",
             notes = "Lavado con jabón neutro de bebé",
-            geminiOpinion = "Excelente para la piel delicada del recién nacido. Ideal para cambios continuos.",
+            geminiOpinion = "Excelente para la piel delicada del recién nacido. El tejido Pima permite transpiración óptima y evita sudamina.",
             registeredBy = "Mamá (Britney)"
         ),
         BabyProduct(
@@ -139,28 +150,32 @@ class BabyInventoryRepository(
             quantityCurrent = 72,
             quantityTarget = 140,
             status = ProductStatus.PURCHASED,
-            ingredients = "Loción hipoalergénica con aloe vera, canales de aire absorbentes",
+            ingredients = "Celulosa suave, loción hipoalergénica con extracto de aloe vera, canales de aire absorbentes, 0% parabenos y látex",
+            risksAndWarnings = "Seguro para recién nacidos. Vigilar que el ajuste no presione el muñón del cordón umbilical y cambiar cada 2-3 horas.",
+            safetyLevel = ProductSafetyLevel.SAFE,
             manufacturedIn = "Brasil",
             expirationDate = "12/2027",
             notes = "Corte especial para cordón umbilical",
-            geminiOpinion = "Buena cantidad inicial. Evitar acumular más de 140-160 unidades RN ya que crecen rápido.",
+            geminiOpinion = "Buena cantidad inicial. Evitar acumular más de 140-160 unidades RN ya que crecen rápido en las primeras 3 semanas.",
             registeredBy = "Papá (Edward)"
         ),
         BabyProduct(
             id = UUID.randomUUID().toString(),
-            name = "Toallitas Húmedas 99% Agua Pura (Pack 4x56)",
+            name = "Toallitas Húmedas 99.9% Agua Pura (Pack 4)",
             brand = "WaterWipes",
-            model = "Bio Sensitive",
+            model = "Bio Sensitive RN",
             category = ProductCategory.WIPES_HYGIENE,
             stageSize = "0M+",
-            quantityCurrent = 224,
-            quantityTarget = 300,
+            quantityCurrent = 4,
+            quantityTarget = 4,
             status = ProductStatus.PURCHASED,
-            ingredients = "99.9% agua purificada, 0.1% extracto de semilla de toronja",
+            ingredients = "99.9% agua purificada, 0.1% extracto de semilla de toronja (Citrus Grandis)",
+            risksAndWarnings = "0% alcohol, fragancia, sulfatos ni parabenos. Cerrar bien el sello adhesivo tras cada uso para evitar contaminación o secado.",
+            safetyLevel = ProductSafetyLevel.SAFE,
             manufacturedIn = "Irlanda",
-            expirationDate = "06/2026",
-            notes = "0% alcohol, perfume ni parabenos",
-            geminiOpinion = "Las más recomendadas por pediatras para los primeros 3 meses de vida del bebé.",
+            expirationDate = "06/2027",
+            notes = "4 paquetes de 56 unidades c/u",
+            geminiOpinion = "Las más recomendadas por neonatólogos para el primer mes de vida por su pureza extrema equivalente a algodón y agua hervida.",
             registeredBy = "Mamá (Britney)"
         )
     )
