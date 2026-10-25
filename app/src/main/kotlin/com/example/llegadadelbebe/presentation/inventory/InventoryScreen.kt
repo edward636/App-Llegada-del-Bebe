@@ -1,6 +1,8 @@
 package com.example.llegadadelbebe.presentation.inventory
 
+import android.Manifest
 import android.content.Context
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -19,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -44,7 +45,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,12 +54,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.llegadadelbebe.domain.model.BabyProduct
 import com.example.llegadadelbebe.domain.model.ProductCategory
 import com.example.llegadadelbebe.domain.model.ProductStatus
-import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
+import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -67,10 +69,10 @@ fun InventoryScreen(
     viewModel: InventoryViewModel,
     googleSheetUrl: String,
     geminiApiKey: String,
+    onUserChanged: (String) -> Unit = {},
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
     val products by viewModel.filteredProducts.collectAsStateWithLifecycle()
     val selectedCategory by viewModel.selectedCategory.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
@@ -81,20 +83,54 @@ fun InventoryScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var geminiProductToConfirm by remember { mutableStateOf<BabyProduct?>(null) }
     var cameraErrorMessage by remember { mutableStateOf("") }
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
 
-    // Lanzador nativo de Cámara
-    val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicturePreview()
-    ) { bitmap: Bitmap? ->
-        if (bitmap != null) {
-            val base64 = bitmapToBase64(bitmap)
-            viewModel.analyzePhoto(base64, geminiApiKey) { extracted ->
-                if (extracted != null) {
-                    geminiProductToConfirm = extracted
-                } else {
-                    cameraErrorMessage = "No se pudo extraer la información del producto. Intenta con más luz o usa registro manual."
+    // Lanzador de Cámara en Alta Definición (Optimizado a 1280px para lectura nítida de ingredientes y fechas)
+    val highResCameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success: Boolean ->
+        val uri = pendingCameraUri
+        if (success && uri != null) {
+            val base64 = uriToBase64(context, uri)
+            if (base64 != null) {
+                cameraErrorMessage = ""
+                viewModel.analyzePhoto(base64, geminiApiKey) { extracted ->
+                    if (extracted != null) {
+                        geminiProductToConfirm = extracted
+                    } else {
+                        cameraErrorMessage = "No se pudo extraer la información del producto. Intenta con más luz o usa registro manual."
+                    }
                 }
+            } else {
+                cameraErrorMessage = "No se pudo procesar la fotografía tomada."
             }
+        }
+    }
+
+    val launchCameraWithUri = {
+        try {
+            val photoDir = File(context.cacheDir, "camera_photos")
+            if (!photoDir.exists()) photoDir.mkdirs()
+            val photoFile = File(photoDir, "capture_gemini.jpg")
+            val uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                photoFile
+            )
+            pendingCameraUri = uri
+            highResCameraLauncher.launch(uri)
+        } catch (e: Exception) {
+            cameraErrorMessage = "Error al iniciar la cámara: ${e.localizedMessage}"
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted: Boolean ->
+        if (granted) {
+            launchCameraWithUri()
+        } else {
+            cameraErrorMessage = "Permiso de cámara denegado. Actívalo para escanear etiquetas con Gemini."
         }
     }
 
@@ -105,6 +141,7 @@ fun InventoryScreen(
         if (uri != null) {
             val base64 = uriToBase64(context, uri)
             if (base64 != null) {
+                cameraErrorMessage = ""
                 viewModel.analyzePhoto(base64, geminiApiKey) { extracted ->
                     if (extracted != null) {
                         geminiProductToConfirm = extracted
@@ -127,7 +164,7 @@ fun InventoryScreen(
                     }
                 },
                 actions = {
-                    // Estado de sincronización en tiempo real (reemplaza al botón manual)
+                    // Estado de sincronización en tiempo real
                     Surface(
                         shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.surfaceVariant,
@@ -154,9 +191,19 @@ fun InventoryScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.End
             ) {
-                // Botón Cámara con Gemini 3.8
+                // Botón Cámara HD con Gemini 3.8
                 FloatingActionButton(
-                    onClick = { cameraLauncher.launch(null) },
+                    onClick = {
+                        val hasCamPerm = ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.CAMERA
+                        ) == PackageManager.PERMISSION_GRANTED
+                        if (hasCamPerm) {
+                            launchCameraWithUri()
+                        } else {
+                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
+                    },
                     containerColor = MaterialTheme.colorScheme.primary,
                     shape = RoundedCornerShape(16.dp)
                 ) {
@@ -165,7 +212,16 @@ fun InventoryScreen(
                     }
                 }
 
-                // Botón Registro Manual / Galería
+                // Botón Galería con Gemini 3.8
+                FloatingActionButton(
+                    onClick = { galleryLauncher.launch("image/*") },
+                    containerColor = MaterialTheme.colorScheme.tertiary,
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text("🖼️ Galería IA", fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(horizontal = 12.dp))
+                }
+
+                // Botón Registro Manual
                 FloatingActionButton(
                     onClick = { showAddDialog = true },
                     containerColor = MaterialTheme.colorScheme.secondary,
@@ -197,7 +253,11 @@ fun InventoryScreen(
                     color = MaterialTheme.colorScheme.primary
                 )
                 Button(
-                    onClick = { viewModel.toggleActiveUser() },
+                    onClick = {
+                        viewModel.toggleActiveUser()
+                        val updated = if (activeUser.contains("Papá")) "Mamá (Britney)" else "Papá (Edward)"
+                        onUserChanged(updated)
+                    },
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
                 ) {
@@ -205,6 +265,22 @@ fun InventoryScreen(
                         text = if (activeUser.contains("Papá")) "Cambiar a Mamá 🌸" else "Cambiar a Papá 💙",
                         fontSize = 11.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            if (cameraErrorMessage.isNotBlank()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "⚠️ $cameraErrorMessage",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.padding(10.dp)
                     )
                 }
             }
@@ -429,16 +505,36 @@ fun ProductItemCard(
     }
 }
 
+/**
+ * Redimensiona proporcionalmente la imagen a un máximo de 1280px por lado
+ * para lectura óptica nítida de ingredientes/fechas sin saturar la memoria RAM ni el ancho de banda.
+ */
+private fun scaleBitmapDown(bitmap: Bitmap, maxDimension: Int = 1280): Bitmap {
+    val width = bitmap.width
+    val height = bitmap.height
+    if (width <= maxDimension && height <= maxDimension) return bitmap
+
+    val ratio = width.toFloat() / height.toFloat()
+    val (newWidth, newHeight) = if (ratio > 1f) {
+        maxDimension to (maxDimension / ratio).toInt().coerceAtLeast(1)
+    } else {
+        (maxDimension * ratio).toInt().coerceAtLeast(1) to maxDimension
+    }
+    return Bitmap.createScaledBitmap(bitmap, newWidth, newHeight, true)
+}
+
 private fun bitmapToBase64(bitmap: Bitmap): String {
+    val scaled = scaleBitmapDown(bitmap, 1280)
     val stream = ByteArrayOutputStream()
-    bitmap.compress(Bitmap.CompressFormat.JPEG, 85, stream)
+    scaled.compress(Bitmap.CompressFormat.JPEG, 85, stream)
     return Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP)
 }
 
 private fun uriToBase64(context: Context, uri: Uri): String? {
     return try {
-        val inputStream = context.contentResolver.openInputStream(uri)
-        val bitmap = BitmapFactory.decodeStream(inputStream)
+        val bitmap = context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            BitmapFactory.decodeStream(inputStream)
+        } ?: return null
         bitmapToBase64(bitmap)
     } catch (_: Exception) {
         null

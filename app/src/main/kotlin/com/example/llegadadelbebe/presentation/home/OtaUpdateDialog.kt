@@ -18,7 +18,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.llegadadelbebe.core.update.UpdateInfo
 
@@ -26,10 +25,15 @@ import com.example.llegadadelbebe.core.update.UpdateInfo
 fun OtaUpdateDialog(
     updateInfo: UpdateInfo,
     downloadProgress: Int,
+    statusMessage: String = "",
     onDismiss: () -> Unit,
-    onConfirmUpdate: () -> Unit
+    onConfirmUpdate: () -> Unit,
+    onInstallCached: () -> Unit = onConfirmUpdate
 ) {
-    Dialog(onDismissRequest = onDismiss) {
+    val isDownloading = downloadProgress in 0..99
+    val isReadyToInstall = downloadProgress >= 100
+
+    Dialog(onDismissRequest = { if (!isDownloading) onDismiss() }) {
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp)
@@ -57,18 +61,33 @@ fun OtaUpdateDialog(
                 )
 
                 if (downloadProgress >= 0) {
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Descargando actualización: $downloadProgress%",
-                        style = MaterialTheme.typography.labelMedium
+                        text = if (isReadyToInstall) {
+                            "✅ Descarga completada (100%)"
+                        } else {
+                            "Descargando actualización: $downloadProgress%"
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
                     )
                     LinearProgressIndicator(
-                        progress = { downloadProgress / 100f },
+                        progress = { (downloadProgress.coerceIn(0, 100)) / 100f },
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                if (statusMessage.isNotBlank()) {
+                    Text(
+                        text = statusMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -77,16 +96,18 @@ fun OtaUpdateDialog(
                     OutlinedButton(
                         onClick = onDismiss,
                         modifier = Modifier.weight(1f),
-                        enabled = downloadProgress < 0
+                        enabled = !isDownloading
                     ) {
                         Text("Más tarde")
                     }
                     Button(
-                        onClick = onConfirmUpdate,
+                        onClick = {
+                            if (isReadyToInstall) onInstallCached() else onConfirmUpdate()
+                        },
                         modifier = Modifier.weight(1f),
-                        enabled = downloadProgress < 0
+                        enabled = !isDownloading
                     ) {
-                        Text("Actualizar")
+                        Text(if (isReadyToInstall) "📲 Instalar" else "Actualizar")
                     }
                 }
             }

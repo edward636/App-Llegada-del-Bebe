@@ -12,6 +12,7 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URL
@@ -24,6 +25,11 @@ data class UpdateInfo(
     val changelog: String
 )
 
+enum class OtaInstallOutcome {
+    INSTALLER_LAUNCHED,
+    PERMISSION_REQUIRED
+}
+
 /**
  * Gestor de actualizaciones inalámbricas (OTA - Over The Air) para uso personal.
  * Permite a Papá y Britney actualizar la app automáticamente con 1 toque
@@ -33,9 +39,10 @@ object OtaUpdateManager {
 
     private const val GITHUB_REPO = "Edward636/App-Llegada-del-Bebe"
     private const val GITHUB_RELEASES_API = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
+    private const val APK_FILE_NAME = "update_bebe.apk"
 
     /**
-     * Compara dos versiones semánticas (ej: "1.0.2" vs "1.0.1").
+     * Compara dos versiones semánticas (ej: "1.0.4" vs "1.0.3").
      * Devuelve true estrictamente si remoteVersion es mayor que currentVersion.
      * Si son iguales o la remota es menor, devuelve false para evitar bucles.
      */
@@ -159,71 +166,129 @@ object OtaUpdateManager {
         }
     }
 
+    fun hasCachedApk(context: Context): Boolean {
+        val file = File(File(context.cacheDir, "updates"), APK_FILE_NAME)
+        return file.exists() && file.length() > 1_000_000L
+    }
+
+    fun canInstallPackages(context: Context): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.packageManager.canRequestPackageInstalls()
+        } else {
+            true
+        }
+    }
+
     /**
-     * Descarga el APK en caché manejando redirecciones y lanza el instalador nativo de Android.
+     * Descarga el APK en caché de forma atómica manejando redirecciones CDN (GitHub -> Azure/AWS)
+     * y lanza el instalador nativo de Android sin bloquear el hilo principal.
      */
     suspend fun downloadAndInstallApk(
         context: Context,
         apkUrl: String,
         onProgress: (Int) -> Unit
-    ): Result<Unit> = withContext(Dispatchers.IO) {
+    ): Result<OtaInstallOutcome> = withContext(Dispatchers.IO) {
         try {
             val updatesDir = File(context.cacheDir, "updates")
             if (!updatesDir.exists()) updatesDir.mkdirs()
 
-            val apkFile = File(updatesDir, "update_bebe.apk")
-            if (apkFile.exists()) apkFile.delete()
+            val tempFile = File(updatesDir, "update_bebe_downloading.tmp")
+            val finalApkFile = File(updatesDir, APK_FILE_NAME)
+            if (tempFile.exists()) tempFile.delete()
 
-            // Manejar redirecciones explícitamente (GitHub 302 -> CDN Azure/AWS)
+            // Manejar redirecciones explícitamente (GitHub 302 -> CDN)
             var currentUrl = apkUrl
             var connection: HttpURLConnection
             var redirectCount = 0
             while (true) {
                 val u = URL(currentUrl)
                 connection = (u.openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
                     connectTimeout = 15000
-                    readTimeout = 30000
-                    instanceFollowRedirects = true
+                    readTimeout = 45000
+                    instanceFollowRedirects = false
                     setRequestProperty("User-Agent", "AppLlegadaDelBebe-Android")
                     setRequestProperty("Accept", "*/*")
                 }
                 val responseCode = connection.responseCode
                 if (responseCode in 301..308) {
                     val newLocation = connection.getHeaderField("Location")
-                    if (!newLocation.isNullOrBlank() && redirectCount < 5) {
-                        currentUrl = newLocation
+                    connection.disconnect()
+                    if (!newLocation.isNullOrBlank() && redirectCount < 6) {
+                        currentUrl = URL(u, newLocation).toString()
                         redirectCount++
-                        connection.disconnect()
                         continue
+                    } else {
+                        throw IOException("Demasiadas redirecciones al descargar el APK ($redirectCount)")
                     }
+                }
+                if (responseCode !in 200..299) {
+                    connection.disconnect()
+                    throw IOException("Respuesta HTTP inválida al descargar APK: $responseCode")
                 }
                 break
             }
 
-            val fileLength = connection.contentLength
+            val fileLength = connection.contentLengthLong
+            var lastReportedProgress = -1
+
             connection.inputStream.use { input ->
-                FileOutputStream(apkFile).use { output ->
-                    val data = ByteArray(8192)
+                FileOutputStream(tempFile).use { output ->
+                    val data = ByteArray(32768) // Buffer de 32 KB para descarga rápida sin saturar UI
                     var total: Long = 0
                     var count: Int
                     while (input.read(data).also { count = it } != -1) {
-                        total += count
-                        if (fileLength > 0) {
-                            val progress = ((total * 100) / fileLength).toInt()
-                            withContext(Dispatchers.Main) { onProgress(progress) }
-                        } else {
-                            val estimatedProgress = ((total * 100) / 12500000).toInt().coerceAtMost(99)
-                            withContext(Dispatchers.Main) { onProgress(estimatedProgress) }
-                        }
                         output.write(data, 0, count)
+                        total += count
+                        val progress = if (fileLength > 0) {
+                            ((total * 100) / fileLength).toInt().coerceIn(0, 99)
+                        } else {
+                            ((total * 100) / 12_500_000L).toInt().coerceIn(0, 99)
+                        }
+                        if (progress > lastReportedProgress) {
+                            lastReportedProgress = progress
+                            withContext(Dispatchers.Main) { onProgress(progress) }
+                        }
                     }
                     output.flush()
                 }
             }
+            connection.disconnect()
+
+            if (tempFile.length() < 1_000_000L) {
+                tempFile.delete()
+                throw IOException("El archivo descargado está incompleto (${tempFile.length()} bytes).")
+            }
+
+            if (finalApkFile.exists()) finalApkFile.delete()
+            if (!tempFile.renameTo(finalApkFile)) {
+                tempFile.copyTo(finalApkFile, overwrite = true)
+                tempFile.delete()
+            }
+
             withContext(Dispatchers.Main) { onProgress(100) }
 
-            // Comprobar permiso de instalación en Android 8+ (Oppo Reno 12F & Redmi Note 13 Pro+)
-            withContext(Dispatchers.Main) {
+            launchCachedApkInstaller(context)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Lanza el instalador de paquetes de Android para el APK ya descargado en caché.
+     * Si el teléfono (Oppo Reno 12F / Redmi Note 13 Pro+) aún no tiene activado el permiso
+     * de "Instalar apps desconocidas", abre directamente la pantalla de permiso sin colisionar
+     * con el instalador, para que al volver se instale limpiamente.
+     */
+    suspend fun launchCachedApkInstaller(context: Context): Result<OtaInstallOutcome> =
+        withContext(Dispatchers.Main) {
+            try {
+                val updatesDir = File(context.cacheDir, "updates")
+                val apkFile = File(updatesDir, APK_FILE_NAME)
+                if (!apkFile.exists() || apkFile.length() < 1_000_000L) {
+                    return@withContext Result.failure(IOException("APK descargado no encontrado en caché."))
+                }
+
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     if (!context.packageManager.canRequestPackageInstalls()) {
                         val manageIntent = Intent(
@@ -233,6 +298,7 @@ object OtaUpdateManager {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         }
                         context.startActivity(manageIntent)
+                        return@withContext Result.success(OtaInstallOutcome.PERMISSION_REQUIRED)
                     }
                 }
 
@@ -246,14 +312,13 @@ object OtaUpdateManager {
                     setDataAndType(apkUri, "application/vnd.android.package-archive")
                     addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 }
 
                 context.startActivity(installIntent)
+                Result.success(OtaInstallOutcome.INSTALLER_LAUNCHED)
+            } catch (e: Exception) {
+                Result.failure(e)
             }
-
-            Result.success(Unit)
-        } catch (e: Exception) {
-            Result.failure(e)
         }
-    }
 }

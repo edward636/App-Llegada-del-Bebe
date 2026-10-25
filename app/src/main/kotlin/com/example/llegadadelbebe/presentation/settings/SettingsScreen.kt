@@ -31,6 +31,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -45,9 +46,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.llegadadelbebe.APP_VERSION_CODE
 import com.example.llegadadelbebe.APP_VERSION_NAME
 import com.example.llegadadelbebe.core.security.SecureConfig
+import com.example.llegadadelbebe.core.update.OtaInstallOutcome
 import com.example.llegadadelbebe.core.update.OtaUpdateManager
 import com.example.llegadadelbebe.core.util.PregnancyCalculator
 import com.example.llegadadelbebe.core.util.ZodiacPredictor
@@ -65,6 +70,7 @@ fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
     var name by remember { mutableStateOf(babyName.ifBlank { "Nuestro Bebé" }) }
     var lmpDate by remember { mutableStateOf(currentLmp) }
@@ -73,6 +79,25 @@ fun SettingsScreen(
     var otaCheckStatus by remember { mutableStateOf("") }
     var isCheckingOta by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableIntStateOf(-1) }
+    var awaitingInstallPermission by remember { mutableStateOf(false) }
+
+    // Si el usuario fue a Ajustes de Android a activar "Instalar apps desconocidas" y regresa,
+    // se lanza el instalador automáticamente sin tener que volver a descargar el APK.
+    DisposableEffect(lifecycleOwner, awaitingInstallPermission) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && awaitingInstallPermission) {
+                if (OtaUpdateManager.canInstallPackages(context) && OtaUpdateManager.hasCachedApk(context)) {
+                    awaitingInstallPermission = false
+                    coroutineScope.launch {
+                        otaCheckStatus = "🚀 Permiso concedido. Abriendo instalador de Android..."
+                        OtaUpdateManager.launchCachedApkInstaller(context)
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // Cálculo dinámico en tiempo real derivado de la FUR seleccionada
     val calculatedStats = remember(lmpDate) {
@@ -126,7 +151,7 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "Selecciona quién está usando la app para registrar cada cambio automáticamente en Google Sheets:",
+                        text = "Selecciona quién está usando la app (se guarda permanentemente en este teléfono y etiqueta cada registro en Google Sheets):",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -329,13 +354,13 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "🔒 Sincronización Automática en la Nube",
+                        text = "🔒 Sincronización Automática y Caché Local",
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "Cada cambio que realices se sube de forma instantánea a Google Sheets sin necesidad de tocar ningún botón.",
+                        text = "Cada cambio se guarda al instante en la memoria interna del teléfono (Offline-First) y se sincroniza automáticamente con Google Sheets.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -391,13 +416,17 @@ fun SettingsScreen(
                     if (downloadProgress >= 0) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
-                            text = "Descargando actualización: $downloadProgress%",
+                            text = if (downloadProgress >= 100) {
+                                "✅ Descarga completada (100%)"
+                            } else {
+                                "Descargando actualización: $downloadProgress%"
+                            },
                             style = MaterialTheme.typography.bodySmall,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.primary
                         )
                         LinearProgressIndicator(
-                            progress = { downloadProgress / 100f },
+                            progress = { (downloadProgress.coerceIn(0, 100)) / 100f },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(8.dp)
@@ -407,9 +436,26 @@ fun SettingsScreen(
                         )
                     }
 
+                    val isActivelyDownloading = downloadProgress in 0..99
+
                     Button(
                         onClick = {
                             coroutineScope.launch {
+                                // Si ya se descargó al 100%, lanzar directamente el instalador desde caché
+                                if (downloadProgress >= 100 && OtaUpdateManager.hasCachedApk(context)) {
+                                    val launchResult = OtaUpdateManager.launchCachedApkInstaller(context)
+                                    val outcome = launchResult.getOrNull()
+                                    if (outcome == OtaInstallOutcome.PERMISSION_REQUIRED) {
+                                        awaitingInstallPermission = true
+                                        otaCheckStatus = "⚠️ Activa 'Confiar en esta fuente' en la pantalla que se abrió y regresa aquí."
+                                    } else if (launchResult.isSuccess) {
+                                        otaCheckStatus = "🚀 Instalador de Android abierto. Confirma 'Actualizar' en pantalla."
+                                    } else {
+                                        otaCheckStatus = "❌ Error al abrir instalador: ${launchResult.exceptionOrNull()?.localizedMessage}"
+                                    }
+                                    return@launch
+                                }
+
                                 isCheckingOta = true
                                 otaCheckStatus = "🔍 Comprobando actualizaciones en GitHub..."
                                 val result = OtaUpdateManager.checkForUpdate(
@@ -429,7 +475,13 @@ fun SettingsScreen(
                                         )
                                         isCheckingOta = false
                                         if (downloadResult.isSuccess) {
-                                            otaCheckStatus = "🚀 Instalador abierto. Confirma la actualización en pantalla."
+                                            val outcome = downloadResult.getOrNull()
+                                            if (outcome == OtaInstallOutcome.PERMISSION_REQUIRED) {
+                                                awaitingInstallPermission = true
+                                                otaCheckStatus = "⚠️ Activa 'Permitir desde esta fuente' en tu teléfono y regresa; se instalará al instante."
+                                            } else {
+                                                otaCheckStatus = "🚀 Instalador abierto. Confirma 'Actualizar' en pantalla."
+                                            }
                                         } else {
                                             val err = downloadResult.exceptionOrNull()?.localizedMessage ?: "Error desconocido"
                                             otaCheckStatus = "❌ Error al descargar/instalar: $err"
@@ -447,12 +499,18 @@ fun SettingsScreen(
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        enabled = !isCheckingOta && downloadProgress < 0
+                        enabled = !isCheckingOta && !isActivelyDownloading
                     ) {
-                        if (isCheckingOta) {
+                        if (isCheckingOta || isActivelyDownloading) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White)
                         } else {
-                            Text("Buscar y Actualizar Ahora")
+                            Text(
+                                if (downloadProgress >= 100) {
+                                    "📲 Instalar Actualización Descargada"
+                                } else {
+                                    "Buscar y Actualizar Ahora"
+                                }
+                            )
                         }
                     }
                 }

@@ -1,5 +1,6 @@
 package com.example.llegadadelbebe.data.repository
 
+import com.example.llegadadelbebe.core.storage.LocalPreferences
 import com.example.llegadadelbebe.data.remote.GoogleSheetsService
 import com.example.llegadadelbebe.domain.model.BabyProduct
 import com.example.llegadadelbebe.domain.model.ProductCategory
@@ -20,14 +21,18 @@ enum class CloudSyncStatus(val label: String, val icon: String) {
 
 /**
  * Repositorio central del inventario del bebé.
- * Administra el estado reactivo en memoria y sincroniza automáticamente con Google Sheets.
+ * Administra el estado reactivo en memoria, guarda caché local (Offline-first)
+ * y sincroniza automáticamente con Google Sheets en segundo plano.
  */
 class BabyInventoryRepository(
+    private val localPreferences: LocalPreferences? = null,
     private val sheetsService: GoogleSheetsService = GoogleSheetsService(),
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 ) {
 
-    private val _products = MutableStateFlow<List<BabyProduct>>(getInitialStarterProducts())
+    private val _products = MutableStateFlow<List<BabyProduct>>(
+        localPreferences?.getInventoryCache() ?: getInitialStarterProducts()
+    )
     val products: StateFlow<List<BabyProduct>> = _products.asStateFlow()
 
     private val _syncStatus = MutableStateFlow(CloudSyncStatus.ONLINE)
@@ -46,7 +51,7 @@ class BabyInventoryRepository(
     }
 
     /**
-     * Guarda o actualiza un producto en memoria y dispara sincronización automática a Google Sheets.
+     * Guarda o actualiza un producto en memoria, en caché local y dispara sincronización automática a Google Sheets.
      */
     fun saveProduct(product: BabyProduct, googleSheetUrl: String? = null) {
         val targetUrl = googleSheetUrl?.ifBlank { activeGoogleSheetUrl } ?: activeGoogleSheetUrl
@@ -58,6 +63,7 @@ class BabyInventoryRepository(
             currentList.add(0, product)
         }
         _products.value = currentList
+        localPreferences?.saveInventoryCache(currentList)
 
         // Sincronización automática inmediata en segundo plano
         if (targetUrl.isNotBlank()) {
@@ -70,10 +76,12 @@ class BabyInventoryRepository(
     }
 
     /**
-     * Elimina un producto por ID localmente.
+     * Elimina un producto por ID localmente y actualiza la caché.
      */
     fun deleteProduct(productId: String) {
-        _products.value = _products.value.filterNot { it.id == productId }
+        val updated = _products.value.filterNot { it.id == productId }
+        _products.value = updated
+        localPreferences?.saveInventoryCache(updated)
     }
 
     /**
@@ -91,6 +99,7 @@ class BabyInventoryRepository(
             val remoteItems = result.getOrNull() ?: emptyList()
             if (remoteItems.isNotEmpty()) {
                 _products.value = remoteItems
+                localPreferences?.saveInventoryCache(remoteItems)
             }
             Result.success(Unit)
         } else {

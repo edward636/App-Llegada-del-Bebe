@@ -1,6 +1,7 @@
 package com.example.llegadadelbebe
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -9,11 +10,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import com.example.llegadadelbebe.core.security.SecureConfig
+import com.example.llegadadelbebe.core.storage.LocalPreferences
+import com.example.llegadadelbebe.core.update.OtaInstallOutcome
 import com.example.llegadadelbebe.core.update.OtaUpdateManager
 import com.example.llegadadelbebe.core.update.UpdateInfo
 import com.example.llegadadelbebe.data.repository.BabyInventoryRepository
@@ -26,24 +32,27 @@ import com.example.llegadadelbebe.presentation.inventory.InventoryScreen
 import com.example.llegadadelbebe.presentation.inventory.InventoryViewModel
 import com.example.llegadadelbebe.presentation.settings.SettingsScreen
 import kotlinx.coroutines.launch
-import java.time.LocalDate
 
-const val APP_VERSION_CODE = 4
-const val APP_VERSION_NAME = "1.0.3"
+const val APP_VERSION_CODE = 5
+const val APP_VERSION_NAME = "1.0.4"
 
 @Composable
 fun MainNavigation() {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
     val backStack = rememberNavBackStack(NavHome)
 
-    // Repositorio central compartido en memoria y Sheets
-    val sharedRepository = remember { BabyInventoryRepository() }
+    // Persistencia local en el dispositivo (Offline-First)
+    val localPreferences = remember { LocalPreferences(context) }
 
-    // Estados de configuración del Bebé y FUR
-    var babyNameState by remember { mutableStateOf("Nuestro Niño") }
-    var lmpDateState by remember { mutableStateOf(LocalDate.now().minusWeeks(27).minusDays(2)) }
-    var activeUserState by remember { mutableStateOf("Papá (Edward)") }
+    // Repositorio central compartido en memoria, caché local y Google Sheets
+    val sharedRepository = remember { BabyInventoryRepository(localPreferences = localPreferences) }
+
+    // Estados de configuración del Bebé y FUR persistidos en el teléfono
+    var babyNameState by remember { mutableStateOf(localPreferences.getBabyName()) }
+    var lmpDateState by remember { mutableStateOf(localPreferences.getLmpDate()) }
+    var activeUserState by remember { mutableStateOf(localPreferences.getActiveUser()) }
 
     val googleSheetUrlState = remember { SecureConfig.getGoogleSheetUrl() }
     val geminiApiKeyState = remember { SecureConfig.getGeminiApiKey() }
@@ -51,6 +60,26 @@ fun MainNavigation() {
     // Estado de actualización OTA
     var pendingUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
     var downloadProgress by remember { mutableIntStateOf(-1) }
+    var otaDialogStatus by remember { mutableStateOf("") }
+    var awaitingInstallPermission by remember { mutableStateOf(false) }
+
+    // Si el usuario concede el permiso de "Instalar apps desconocidas" y regresa a la app,
+    // lanza el instalador automáticamente usando el APK ya descargado en caché.
+    DisposableEffect(lifecycleOwner, awaitingInstallPermission) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && awaitingInstallPermission) {
+                if (OtaUpdateManager.canInstallPackages(context) && OtaUpdateManager.hasCachedApk(context)) {
+                    awaitingInstallPermission = false
+                    coroutineScope.launch {
+                        otaDialogStatus = "🚀 Permiso concedido. Abriendo instalador..."
+                        OtaUpdateManager.launchCachedApkInstaller(context)
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     // Sincronización automática de inicio y chequeo OTA
     LaunchedEffect(Unit) {
@@ -71,7 +100,7 @@ fun MainNavigation() {
 
     val homeViewModel: HomeViewModel = viewModel {
         HomeViewModel(sharedRepository).apply {
-            updateLmp(lmpDateState)
+            updateBabySettings(babyNameState, lmpDateState)
         }
     }
 
@@ -102,6 +131,10 @@ fun MainNavigation() {
                     viewModel = inventoryViewModel,
                     googleSheetUrl = googleSheetUrlState,
                     geminiApiKey = geminiApiKeyState,
+                    onUserChanged = { newUser ->
+                        activeUserState = newUser
+                        localPreferences.saveActiveUser(newUser)
+                    },
                     onBack = { backStack.removeLastOrNull() }
                 )
             }
@@ -121,6 +154,9 @@ fun MainNavigation() {
                         babyNameState = newName
                         lmpDateState = newLmp
                         activeUserState = newUser
+                        localPreferences.saveBabyName(newName)
+                        localPreferences.saveLmpDate(newLmp)
+                        localPreferences.saveActiveUser(newUser)
                         homeViewModel.updateBabySettings(newName, newLmp)
                         inventoryViewModel.setActiveUser(newUser)
                     },
@@ -135,15 +171,45 @@ fun MainNavigation() {
         OtaUpdateDialog(
             updateInfo = update,
             downloadProgress = downloadProgress,
-            onDismiss = { pendingUpdate = null },
+            statusMessage = otaDialogStatus,
+            onDismiss = {
+                pendingUpdate = null
+                downloadProgress = -1
+                otaDialogStatus = ""
+            },
             onConfirmUpdate = {
                 coroutineScope.launch {
                     downloadProgress = 0
-                    OtaUpdateManager.downloadAndInstallApk(
+                    otaDialogStatus = ""
+                    val result = OtaUpdateManager.downloadAndInstallApk(
                         context = context,
                         apkUrl = update.apkUrl,
                         onProgress = { progress -> downloadProgress = progress }
                     )
+                    if (result.isSuccess) {
+                        val outcome = result.getOrNull()
+                        if (outcome == OtaInstallOutcome.PERMISSION_REQUIRED) {
+                            awaitingInstallPermission = true
+                            otaDialogStatus = "⚠️ Activa 'Permitir desde esta fuente' en tu teléfono y regresa; se instalará al instante."
+                        } else {
+                            otaDialogStatus = "🚀 Instalador abierto. Toca 'Actualizar' en la ventana de Android."
+                        }
+                    } else {
+                        val err = result.exceptionOrNull()?.localizedMessage ?: "Error de red"
+                        otaDialogStatus = "❌ Error al descargar: $err. Intenta de nuevo."
+                        downloadProgress = -1
+                    }
+                }
+            },
+            onInstallCached = {
+                coroutineScope.launch {
+                    val result = OtaUpdateManager.launchCachedApkInstaller(context)
+                    if (result.getOrNull() == OtaInstallOutcome.PERMISSION_REQUIRED) {
+                        awaitingInstallPermission = true
+                        otaDialogStatus = "⚠️ Activa 'Confiar en esta fuente' y regresa aquí."
+                    } else if (result.isSuccess) {
+                        otaDialogStatus = "🚀 Instalador de Android abierto."
+                    }
                 }
             }
         )
