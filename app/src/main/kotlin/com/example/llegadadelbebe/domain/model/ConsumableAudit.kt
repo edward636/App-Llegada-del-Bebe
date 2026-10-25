@@ -23,14 +23,20 @@ data class ConsumableCategoryAudit(
 )
 
 /**
- * Auditoría integral de consumibles esenciales para el bebé niño.
+ * Auditoría integral de consumibles esenciales para el bebé niño (adaptada a tallas RN, P, M, G de Venezuela).
  */
 data class ConsumablesAuditSummary(
-    val diapersRn: ConsumableCategoryAudit,
-    val diapersSize1: ConsumableCategoryAudit,
-    val wipes: ConsumableCategoryAudit,
-    val babySoaps: ConsumableCategoryAudit,
-    val clothingRn: ConsumableCategoryAudit,
-    val clothing0to3M: ConsumableCategoryAudit,
+    val diapersRn: ConsumableCategoryAudit,       // Talla RN (hasta ~4.5 kg)
+    val diapersSizeP: ConsumableCategoryAudit,    // Talla P / Pequeño (4 a 6 kg / Etapa 1)
+    val diapersSizeM: ConsumableCategoryAudit,    // Talla M / Mediano (6 a 9.5 kg / Etapa 2)
+    val diapersSizeG: ConsumableCategoryAudit,    // Talla G / Grande (9 a 12.5 kg / Etapa 3)
+    val wipes: ConsumableCategoryAudit,           // Toallitas húmedas (paquetes y toallitas)
+    val babySoaps: ConsumableCategoryAudit,       // Champús y jabones neutros
+    val clothingRn: ConsumableCategoryAudit,      // Ropita RN
+    val clothing0to3M: ConsumableCategoryAudit,   // Ropita 0-3 Meses
+    val giftedAudit: ConsumableCategoryAudit? = null, // Pañales regalados (Baby Shower)
     val geminiSmartAdvice: String = ""
-)
+) {
+    // Compatibilidad para código o pruebas previas
+    val diapersSize1: ConsumableCategoryAudit get() = diapersSizeP
+}

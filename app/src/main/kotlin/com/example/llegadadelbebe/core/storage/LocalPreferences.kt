@@ -57,6 +57,8 @@ class LocalPreferences(context: Context) {
                     put("model", item.model)
                     put("category", item.category.name)
                     put("stageSize", item.stageSize)
+                    put("packageCount", item.packageCount)
+                    put("unitsPerPackage", item.unitsPerPackage)
                     put("quantityCurrent", item.quantityCurrent)
                     put("quantityTarget", item.quantityTarget)
                     put("status", item.status.name)
@@ -67,6 +69,9 @@ class LocalPreferences(context: Context) {
                     put("expirationDate", item.expirationDate)
                     put("photoBase64", item.photoBase64)
                     put("rawPhotoBase64", item.rawPhotoBase64)
+                    put("barcode", item.barcode)
+                    put("countryVariant", item.countryVariant)
+                    put("usefulUntilAge", item.usefulUntilAge)
                     put("notes", item.notes)
                     put("geminiOpinion", item.geminiOpinion)
                     put("registeredBy", item.registeredBy)
@@ -98,6 +103,8 @@ class LocalPreferences(context: Context) {
                         category = runCatching { ProductCategory.valueOf(catName) }
                             .getOrDefault(ProductCategory.CLOTHING),
                         stageSize = obj.optString("stageSize", "RN"),
+                        packageCount = obj.optInt("packageCount", 1),
+                        unitsPerPackage = obj.optInt("unitsPerPackage", 1),
                         quantityCurrent = obj.optInt("quantityCurrent", 1),
                         quantityTarget = obj.optInt("quantityTarget", 1),
                         status = runCatching { ProductStatus.valueOf(statusName) }
@@ -110,6 +117,9 @@ class LocalPreferences(context: Context) {
                         expirationDate = obj.optString("expirationDate", "N/A"),
                         photoBase64 = obj.optString("photoBase64", ""),
                         rawPhotoBase64 = obj.optString("rawPhotoBase64", ""),
+                        barcode = obj.optString("barcode", ""),
+                        countryVariant = obj.optString("countryVariant", ""),
+                        usefulUntilAge = obj.optString("usefulUntilAge", ""),
                         notes = obj.optString("notes", ""),
                         geminiOpinion = obj.optString("geminiOpinion", ""),
                         registeredBy = obj.optString("registeredBy", "Papá (Edward)")

@@ -39,7 +39,7 @@ class GeminiClient(
     /**
      * Extrae información estructurada completa de un producto de bebé a partir de una foto en Base64.
      * Captura nombre, marca, modelo, ingredientes, riesgos/alérgenos, nivel de seguridad,
-     * lugar de fabricación, vencimiento y recomendación pediátrica.
+     * lugar de fabricación, vencimiento, paquetes, unidades, código de barras y compatibilidad para Venezuela.
      */
     suspend fun extractProductFromImage(
         base64Image: String,
@@ -49,22 +49,42 @@ class GeminiClient(
     ): Result<BabyProduct> = withContext(Dispatchers.IO) {
         try {
             val promptText = """
-                Eres un pediatra neonatólogo, dermatólogo infantil y experto en puericultura acompañando a Edward (Papá) y Britney (Mamá) en la llegada de su bebé varón.
-                Analiza con máxima precisión la fotografía del producto o su etiqueta (pañales, cremas, jabones, toallitas, ropita, biberones, medicamentos, accesorios, etc.).
+                Eres un pediatra neonatólogo, dermatólogo infantil y asesor de compras para bebés acompañando a Edward (Papá) y Britney (Mamá) en Venezuela ante la llegada de su bebé varón.
+                Analiza con máxima precisión la fotografía del producto o su empaque (pañales, ropita, toallitas, champús, colonias, cortauñas, termómetro, cremas, teteros/biberones, medicinas, etc.).
+
+                Pautas específicas:
+                - En PAÑALES: En Venezuela se usan las tallas RN (Recién Nacido / hasta 4.5kg), P (Pequeño / 4-6kg), M (Mediano / 6-9.5kg), G (Grande / 9-12.5kg), XG, XXG. Si el paquete indica Etapa 1 asócialo a Talla P, Etapa 2 a Talla M, Etapa 3 a Talla G.
+                - En CONTEO: Identifica si viene por paquete (ej: 1 paquete de 24 pañales -> paquetes: 1, unidades_por_paquete: 24, unidades_totales: 24; toallitas de 80 unidades -> paquetes: 1, unidades_por_paquete: 80).
+                - En ROPITA: Identifica talla (RN, 0-3M, 3-6M, etc.), tipo de tela (ej: 100% Algodón Pima) y analiza "edad_util": hasta qué edad en meses o peso estimado puede usarla el bebé antes de que le quede pequeña.
+                - En HIGIENE/SALUD:
+                  * Colonias: Revisa si contiene alcohol (Alcohol Denat). Si tiene alcohol, marca CAUTION/WARNING (nunca aplicar directo a piel de RN). Si es base agua sin alcohol, marca SAFE.
+                  * Champús/Jabones: Verifica si es libre de lágrimas (No Tears), libre de sulfatos/parabenos y pH neutro.
+                  * Cortauñas/Tijeras: Indica si tiene puntas romas/redondeadas de seguridad para RN.
+                  * Termómetro: Indica calibración y rango normal neonatal (36.5°C a 37.5°C axilar).
+                - En CÓDIGO DE BARRA Y VARIANTE: Si se aprecian los números bajo el código de barra (EAN-13 / UPC), extráelos. Indica si es variante para Venezuela (prefijo 759, texto en español venezolano, registro MPPS/SACS) o importado.
+                - INFORMACIÓN INCOMPLETA: Si es un cosmético, crema, champú o alimento y NO se aprecian los ingredientes o fecha de vencimiento en esta cara, indica "informacion_incompleta": true y explica qué cara falta fotografiar.
+
                 Devuelve únicamente un objeto JSON válido con las siguientes propiedades exactas:
                 1. "nombre": Nombre claro y descriptivo del producto.
-                2. "marca": Marca visible (ej: Pampers, Carter's, Avent, Mustela, WaterWipes, Huggies).
-                3. "modelo": Línea, modelo o presentación específica que lo hace único (ej: Premium Care Recién Nacido, Natural Response Anticólicos, Hydra Bebé).
+                2. "marca": Marca visible (ej: Pampers, Huggies, Carter's, Avent, Mustela, WaterWipes, Chicco, Johnson's).
+                3. "modelo": Línea o presentación específica que lo hace único (ej: Natural Care Puro y Natural, Hydra Bebé, Natural Response).
                 4. "categoria": Una de: CLOTHING, DIAPERS, WIPES_HYGIENE, FEEDING, CRIB_SLEEP, TRANSPORT, HEALTH, HOSPITAL_BAG.
-                5. "talla_etapa": Talla, peso o etapa recomendada (ej: RN, 0-3M, 3-6M, Etapa 1, 0M+).
-                6. "cantidad": Cantidad de unidades o piezas contenidas en el empaque (ej: 36 pañales -> 36, pack 5 bodies -> 5, 1 frasco -> 1).
-                7. "ingredientes_materiales": Lista detallada de ingredientes activos/inactivos (en cosméticos, higiene o alimentos) o composición textil/material (ej: 100% Algodón Pima, polipropileno libre de BPA, óxido de zinc, agua purificada).
-                8. "riesgos_advertencias": Análisis detallado de posibles riesgos, alérgenos cutáneos (fragancias, alcohol, parabenos, sulfatos, fenoxietanol), precauciones de seguridad (riesgo de asfixia, lavado previo, temperatura máxima) o indica "Sin riesgos detectados; fórmula hipoalergénica segura para recién nacidos".
-                9. "nivel_seguridad": Uno de: "SAFE" (100% seguro/hipoalergénico para RN), "CAUTION" (usar con precaución, revisar fragancia o edad mínima), "WARNING" (contiene componentes irritantes o no recomendados para recién nacidos).
-                10. "fabricado_en": País o lugar de fabricación si aparece en el empaque (ej: Perú, Brasil, Irlanda, EE.UU., Colombia, o "No especificado en cara visible").
-                11. "fecha_vencimiento": Fecha de vencimiento o caducidad visible (ej: 12/2027) o "N/A" si no vence.
-                12. "opinion_consejo": Explicación detallada y afectuosa para Edward y Britney sobre para qué sirve, cómo aprovecharlo mejor con su bebé y recomendaciones prácticas de uso.
-                13. "busqueda_catalogo": Término de búsqueda optimizado y limpio para encontrar la imagen oficial o foto de catálogo con fondo blanco del producto en internet (ej: "Pampers Premium Care Recién Nacido", "Mustela Crema Facial Hydra Bebé").
+                5. "talla_etapa": Talla precisa (ej: RN, P, M, G, XG para pañales; RN, 0-3M, 3-6M para ropita).
+                6. "paquetes": Número de paquetes (entero, ej: 1).
+                7. "unidades_por_paquete": Cantidad de unidades dentro de cada paquete (entero, ej: 24 pañales, 80 toallitas, 1 frasco).
+                8. "unidades_totales": Total de unidades = paquetes * unidades_por_paquete (entero).
+                9. "ingredientes_materiales": Lista detallada de ingredientes químicos/activos o composición textil (ej: 100% Algodón Pima, óxido de zinc 40%, libre de BPA).
+                10. "riesgos_advertencias": Análisis de riesgos, fragancias, alcohol, parabenos, asfixia o "Sin riesgos detectados; fórmula hipoalergénica segura para recién nacidos".
+                11. "nivel_seguridad": "SAFE", "CAUTION" o "WARNING".
+                12. "fabricado_en": País de fabricación visible o "No especificado en cara visible".
+                13. "fecha_vencimiento": Fecha de vencimiento visible (ej: 12/2027) o "N/A" si no vence.
+                14. "codigo_barra": Dígitos del código de barra si son legibles, o "".
+                15. "variante_pais": Si es específico para Venezuela o importado (ej: "Variante Venezuela 🇻🇪", "Internacional").
+                16. "edad_util": Para ropita o accesorios, hasta qué edad/peso es útil (ej: "Útil hasta los 3 meses (~6 kg)").
+                17. "informacion_incompleta": true o false.
+                18. "que_falta": Explicación si falta foto de reverso/ingredientes, o "".
+                19. "opinion_consejo": Consejo cariñoso y clínico para Edward y Britney sobre su uso óptimo con su bebé.
+                20. "busqueda_catalogo": Término optimizado para buscar la foto limpia de catálogo en internet (ej: "Pampers Natural Care Talla P").
             """.trimIndent()
 
             val requestBody = JSONObject().apply {
@@ -119,6 +139,15 @@ class GeminiClient(
                 ProductSafetyLevel.valueOf(safetyString.uppercase().trim())
             }.getOrDefault(ProductSafetyLevel.SAFE)
 
+            val parsedPacks = productJson.optInt("paquetes", 1).coerceAtLeast(1)
+            val parsedUnitsPerPack = productJson.optInt("unidades_por_paquete", productJson.optInt("cantidad", 1)).coerceAtLeast(1)
+            val parsedTotal = productJson.optInt("unidades_totales", parsedPacks * parsedUnitsPerPack).coerceAtLeast(1)
+
+            val isInfoMissing = productJson.optBoolean("informacion_incompleta", false)
+            val missingPrompt = if (isInfoMissing) {
+                productJson.optString("que_falta", "No se observan los ingredientes o vencimiento en esta cara. Se sugiere fotografiar el reverso.")
+            } else ""
+
             val product = BabyProduct(
                 id = UUID.randomUUID().toString(),
                 name = productJson.optString("nombre", productJson.optString("name", "Producto de Bebé")),
@@ -126,8 +155,10 @@ class GeminiClient(
                 model = productJson.optString("modelo", productJson.optString("model", "")),
                 category = resolvedCategory,
                 stageSize = productJson.optString("talla_etapa", productJson.optString("stageSize", "")),
-                quantityCurrent = productJson.optInt("cantidad", productJson.optInt("quantity", 1)).coerceAtLeast(1),
-                quantityTarget = productJson.optInt("cantidad_meta", productJson.optInt("cantidad", 1)).coerceAtLeast(1),
+                packageCount = parsedPacks,
+                unitsPerPackage = parsedUnitsPerPack,
+                quantityCurrent = parsedTotal,
+                quantityTarget = productJson.optInt("cantidad_meta", parsedTotal).coerceAtLeast(1),
                 status = ProductStatus.PURCHASED,
                 ingredients = productJson.optString("ingredientes_materiales", productJson.optString("ingredients", "")),
                 risksAndWarnings = productJson.optString("riesgos_advertencias", "Fórmula segura para uso neonatal según etiqueta."),
@@ -136,11 +167,93 @@ class GeminiClient(
                 expirationDate = productJson.optString("fecha_vencimiento", productJson.optString("expirationDate", "N/A")),
                 photoBase64 = thumbnailBase64,
                 rawPhotoBase64 = thumbnailBase64,
+                barcode = productJson.optString("codigo_barra", ""),
+                countryVariant = productJson.optString("variante_pais", ""),
+                usefulUntilAge = productJson.optString("edad_util", ""),
+                missingInfoPrompt = missingPrompt,
                 geminiOpinion = productJson.optString("opinion_consejo", productJson.optString("opinion", "")),
                 notes = productJson.optString("busqueda_catalogo", productJson.optString("detalles", ""))
             )
 
             Result.success(product)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Analiza una fotografía complementaria (reverso, tabla de ingredientes o código de barra)
+     * y fusiona los nuevos datos en el producto existente sin perder la foto de catálogo ni el nombre.
+     */
+    suspend fun extractAdditionalDetailsFromImage(
+        base64Image: String,
+        existingProduct: BabyProduct,
+        apiKey: String
+    ): Result<BabyProduct> = withContext(Dispatchers.IO) {
+        try {
+            val promptText = """
+                Eres un pediatra neonatólogo y químico cosmético analizando la fotografía del REVERSO, LATERAL o TABLA DE INGREDIENTES del producto de bebé: "${existingProduct.brand} ${existingProduct.name} ${existingProduct.model}".
+                Extrae con máxima precisión los datos complementarios que estaban ausentes o incompletos:
+                Devuelve únicamente un objeto JSON con las siguientes claves:
+                1. "ingredientes_materiales": Lista detallada de ingredientes activos/inactivos o composición textil visible.
+                2. "fecha_vencimiento": Fecha de vencimiento o caducidad visible (ej: 05/2027) o "N/A" si no vence.
+                3. "codigo_barra": Números del código de barras si son visibles en esta toma.
+                4. "fabricado_en": País de origen, laboratorio o distribuidor.
+                5. "riesgos_advertencias": Análisis de riesgos, fragancias, alcohol, parabenos, o confirmación de fórmula hipoalergénica.
+                6. "nivel_seguridad": "SAFE", "CAUTION" o "WARNING".
+                7. "opinion_complementaria": Breve evaluación pediátrica del reverso.
+            """.trimIndent()
+
+            val requestBody = JSONObject().apply {
+                val contents = JSONArray().apply {
+                    put(JSONObject().apply {
+                        val parts = JSONArray().apply {
+                            put(JSONObject().put("text", promptText))
+                            put(JSONObject().apply {
+                                put("inline_data", JSONObject().apply {
+                                    put("mime_type", "image/jpeg")
+                                    put("data", base64Image)
+                                })
+                            })
+                        }
+                        put("parts", parts)
+                    })
+                }
+                put("contents", contents)
+                put("generationConfig", JSONObject().apply {
+                    put("response_mime_type", "application/json")
+                    put("temperature", 0.2)
+                })
+            }
+
+            val responseString = executePost(requestBody.toString(), apiKey)
+            val jsonResponse = JSONObject(responseString)
+            val rawText = jsonResponse.getJSONArray("candidates").getJSONObject(0)
+                .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text")
+
+            val cleanJson = rawText.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
+            val extraJson = JSONObject(cleanJson)
+
+            val newIngredients = extraJson.optString("ingredientes_materiales").ifBlank { existingProduct.ingredients }
+            val newExpiration = extraJson.optString("fecha_vencimiento").ifBlank { existingProduct.expirationDate }
+            val newBarcode = extraJson.optString("codigo_barra").ifBlank { existingProduct.barcode }
+            val newOrigin = extraJson.optString("fabricado_en").ifBlank { existingProduct.manufacturedIn }
+            val newRisks = extraJson.optString("riesgos_advertencias").ifBlank { existingProduct.risksAndWarnings }
+
+            val safetyStr = extraJson.optString("nivel_seguridad", existingProduct.safetyLevel.name)
+            val newSafety = runCatching { ProductSafetyLevel.valueOf(safetyStr.uppercase()) }.getOrDefault(existingProduct.safetyLevel)
+
+            val mergedProduct = existingProduct.copy(
+                ingredients = newIngredients,
+                expirationDate = newExpiration,
+                barcode = newBarcode,
+                manufacturedIn = newOrigin,
+                risksAndWarnings = newRisks,
+                safetyLevel = newSafety,
+                missingInfoPrompt = "" // Datos complementados exitosamente
+            )
+
+            Result.success(mergedProduct)
         } catch (e: Exception) {
             Result.failure(e)
         }

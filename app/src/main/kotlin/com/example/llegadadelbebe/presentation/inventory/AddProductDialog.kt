@@ -29,6 +29,7 @@ import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -68,7 +69,11 @@ fun AddProductDialog(
     var model by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf(ProductCategory.CLOTHING) }
     var stageSize by remember { mutableStateOf("RN") }
-    var quantity by remember { mutableIntStateOf(1) }
+    var packageCount by remember { mutableIntStateOf(1) }
+    var unitsPerPackage by remember { mutableIntStateOf(1) }
+    var barcode by remember { mutableStateOf("") }
+    var countryVariant by remember { mutableStateOf("") }
+    var usefulUntilAge by remember { mutableStateOf("") }
     var ingredients by remember { mutableStateOf("") }
     var manufacturedIn by remember { mutableStateOf("") }
     var expirationDate by remember { mutableStateOf("") }
@@ -220,19 +225,77 @@ fun AddProductDialog(
                     }
                 }
 
+                // Talla o Etapa
+                OutlinedTextField(
+                    value = stageSize,
+                    onValueChange = { stageSize = it },
+                    label = { Text("Talla / Etapa (ej: RN, P, M, G, 0-3M)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                // Paquetes y Unidades por Paquete
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
-                        value = stageSize,
-                        onValueChange = { stageSize = it },
-                        label = { Text("Talla/Etapa (ej: RN)") },
+                        value = packageCount.toString(),
+                        onValueChange = { packageCount = it.toIntOrNull()?.coerceAtLeast(1) ?: 1 },
+                        label = { Text("Paquetes") },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     )
                     OutlinedTextField(
-                        value = quantity.toString(),
-                        onValueChange = { quantity = it.toIntOrNull() ?: 1 },
-                        label = { Text("Cantidad") },
+                        value = unitsPerPackage.toString(),
+                        onValueChange = { unitsPerPackage = it.toIntOrNull()?.coerceAtLeast(1) ?: 1 },
+                        label = { Text("Uds / Paquete") },
                         modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                ) {
+                    Text(
+                        text = "📦 Total: $packageCount paquete(s) × $unitsPerPackage uds = ${packageCount * unitsPerPackage} unidades",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                // Código de Barras y Variante Regional
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = barcode,
+                        onValueChange = {
+                            barcode = it
+                            countryVariant = com.example.llegadadelbebe.core.util.BarcodeHelper.resolveCountryVariant(it, manufacturedIn)
+                        },
+                        label = { Text("Código de Barras (EAN)") },
+                        placeholder = { Text("759...") },
+                        modifier = Modifier.weight(1.2f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    OutlinedTextField(
+                        value = countryVariant,
+                        onValueChange = { countryVariant = it },
+                        label = { Text("Variante") },
+                        placeholder = { Text("Venezuela 🇻🇪") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                if (selectedCategory == ProductCategory.CLOTHING) {
+                    OutlinedTextField(
+                        value = usefulUntilAge,
+                        onValueChange = { usefulUntilAge = it },
+                        label = { Text("👕 Edad Útil Estimada") },
+                        placeholder = { Text("Ej: Útil hasta los 3 meses (~6 kg)") },
+                        modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
                     )
                 }
@@ -292,6 +355,7 @@ fun AddProductDialog(
                     Button(
                         onClick = {
                             if (name.isNotBlank()) {
+                                val totalUnits = (packageCount * unitsPerPackage).coerceAtLeast(1)
                                 onSave(
                                     BabyProduct(
                                         id = UUID.randomUUID().toString(),
@@ -300,11 +364,17 @@ fun AddProductDialog(
                                         model = model.trim(),
                                         category = selectedCategory,
                                         stageSize = stageSize.trim(),
-                                        quantityCurrent = quantity.coerceAtLeast(1),
+                                        packageCount = packageCount,
+                                        unitsPerPackage = unitsPerPackage,
+                                        quantityCurrent = totalUnits,
                                         ingredients = ingredients.trim(),
                                         manufacturedIn = manufacturedIn.trim(),
                                         expirationDate = expirationDate.trim(),
                                         photoBase64 = photoBase64,
+                                        rawPhotoBase64 = photoBase64,
+                                        barcode = barcode.trim(),
+                                        countryVariant = countryVariant.trim(),
+                                        usefulUntilAge = usefulUntilAge.trim(),
                                         notes = notes.trim(),
                                         registeredBy = registeredBy,
                                         updatedAt = System.currentTimeMillis()

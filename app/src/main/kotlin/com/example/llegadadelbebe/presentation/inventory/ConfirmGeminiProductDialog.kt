@@ -54,10 +54,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.llegadadelbebe.core.util.BarcodeHelper
 import com.example.llegadadelbebe.data.remote.CatalogImageFetcher
 import com.example.llegadadelbebe.domain.model.BabyProduct
 import com.example.llegadadelbebe.domain.model.ProductCategory
 import com.example.llegadadelbebe.domain.model.ProductSafetyLevel
+import com.example.llegadadelbebe.domain.model.ProductStatus
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,30 +67,36 @@ import kotlinx.coroutines.launch
 fun ConfirmGeminiProductDialog(
     initialProduct: BabyProduct,
     onDismiss: () -> Unit,
+    onScanBackPhoto: (() -> Unit)? = null,
     onConfirm: (BabyProduct) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
 
-    var name by remember { mutableStateOf(initialProduct.name) }
-    var brand by remember { mutableStateOf(initialProduct.brand) }
-    var model by remember { mutableStateOf(initialProduct.model) }
-    var category by remember { mutableStateOf(initialProduct.category) }
-    var stageSize by remember { mutableStateOf(initialProduct.stageSize) }
-    var quantity by remember { mutableIntStateOf(initialProduct.quantityCurrent) }
-    var ingredients by remember { mutableStateOf(initialProduct.ingredients) }
-    var risksAndWarnings by remember { mutableStateOf(initialProduct.risksAndWarnings) }
-    var safetyLevel by remember { mutableStateOf(initialProduct.safetyLevel) }
-    var manufacturedIn by remember { mutableStateOf(initialProduct.manufacturedIn) }
-    var expirationDate by remember { mutableStateOf(initialProduct.expirationDate) }
-    var geminiOpinion by remember { mutableStateOf(initialProduct.geminiOpinion) }
-    var registeredBy by remember { mutableStateOf(initialProduct.registeredBy.ifBlank { "Papá (Edward)" }) }
+    var name by remember(initialProduct.id) { mutableStateOf(initialProduct.name) }
+    var brand by remember(initialProduct.id) { mutableStateOf(initialProduct.brand) }
+    var model by remember(initialProduct.id) { mutableStateOf(initialProduct.model) }
+    var category by remember(initialProduct.id) { mutableStateOf(initialProduct.category) }
+    var stageSize by remember(initialProduct.id) { mutableStateOf(initialProduct.stageSize) }
+    var packageCount by remember(initialProduct.id) { mutableIntStateOf(initialProduct.packageCount) }
+    var unitsPerPackage by remember(initialProduct.id) { mutableIntStateOf(initialProduct.unitsPerPackage) }
+    var status by remember(initialProduct.id) { mutableStateOf(initialProduct.status) }
+    var ingredients by remember(initialProduct.id, initialProduct.ingredients) { mutableStateOf(initialProduct.ingredients) }
+    var risksAndWarnings by remember(initialProduct.id, initialProduct.risksAndWarnings) { mutableStateOf(initialProduct.risksAndWarnings) }
+    var safetyLevel by remember(initialProduct.id, initialProduct.safetyLevel) { mutableStateOf(initialProduct.safetyLevel) }
+    var manufacturedIn by remember(initialProduct.id, initialProduct.manufacturedIn) { mutableStateOf(initialProduct.manufacturedIn) }
+    var expirationDate by remember(initialProduct.id, initialProduct.expirationDate) { mutableStateOf(initialProduct.expirationDate) }
+    var barcode by remember(initialProduct.id, initialProduct.barcode) { mutableStateOf(initialProduct.barcode) }
+    var countryVariant by remember(initialProduct.id, initialProduct.countryVariant) { mutableStateOf(initialProduct.countryVariant) }
+    var usefulUntilAge by remember(initialProduct.id, initialProduct.usefulUntilAge) { mutableStateOf(initialProduct.usefulUntilAge) }
+    var geminiOpinion by remember(initialProduct.id) { mutableStateOf(initialProduct.geminiOpinion) }
+    var registeredBy by remember(initialProduct.id) { mutableStateOf(initialProduct.registeredBy.ifBlank { "Papá (Edward)" }) }
 
     // Manejo de imagen limpia de catálogo vs foto de cámara
-    var currentPhotoBase64 by remember { mutableStateOf(initialProduct.photoBase64) }
-    val rawCameraPhotoBase64 = remember {
+    var currentPhotoBase64 by remember(initialProduct.id) { mutableStateOf(initialProduct.photoBase64) }
+    val rawCameraPhotoBase64 = remember(initialProduct.id) {
         initialProduct.rawPhotoBase64.ifBlank { initialProduct.photoBase64 }
     }
-    var catalogPhotoBase64 by remember {
+    var catalogPhotoBase64 by remember(initialProduct.id) {
         mutableStateOf(
             if (initialProduct.photoBase64 != initialProduct.rawPhotoBase64 && initialProduct.photoBase64.isNotBlank()) {
                 initialProduct.photoBase64
@@ -97,7 +105,7 @@ fun ConfirmGeminiProductDialog(
     }
 
     var showSearchCandidates by remember { mutableStateOf(false) }
-    var customSearchQuery by remember {
+    var customSearchQuery by remember(name, brand, model) {
         mutableStateOf(
             listOf(brand, name, model).filter { it.isNotBlank() }.joinToString(" ")
         )
@@ -118,21 +126,30 @@ fun ConfirmGeminiProductDialog(
         ProductSafetyLevel.WARNING -> Color(0xFFC62828)
     }
 
+    val totalCalculatedUnits = packageCount.coerceAtLeast(1) * unitsPerPackage.coerceAtLeast(1)
+
+    // Tallas rápidas según la categoría
+    val quickSizes = when (category) {
+        ProductCategory.DIAPERS -> listOf("RN", "P", "M", "G", "XG", "XXG")
+        ProductCategory.CLOTHING -> listOf("RN", "0-3M", "3-6M", "6-9M", "9-12M")
+        else -> emptyList()
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Card(
             modifier = Modifier
-                .fillMaxWidth(0.94f)
-                .padding(vertical = 16.dp),
+                .fillMaxWidth(0.95f)
+                .padding(vertical = 14.dp),
             shape = RoundedCornerShape(22.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
             elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
         ) {
             Column(
                 modifier = Modifier
-                    .padding(20.dp)
+                    .padding(18.dp)
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -143,7 +160,7 @@ fun ConfirmGeminiProductDialog(
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "Verifica los datos del producto y la foto de catálogo limpia antes de guardar en el mosaico:",
+                    text = "Verifica empaque, paquetes, unidades, ingredientes y variantes para Venezuela antes de guardar:",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -183,7 +200,7 @@ fun ConfirmGeminiProductDialog(
                         color = if (isUsingCatalog) MaterialTheme.colorScheme.primary else Color(0xFF546E7A)
                     ) {
                         Text(
-                            text = if (isUsingCatalog) "✨ Imagen de Catálogo Limpia" else "📷 Foto Tomada con Cámara",
+                            text = if (isUsingCatalog) "✨ Catálogo Limpio" else "📷 Foto Tomada",
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                             color = Color.White,
                             fontWeight = FontWeight.Bold,
@@ -252,10 +269,7 @@ fun ConfirmGeminiProductDialog(
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                     ) {
-                        Column(
-                            modifier = Modifier.padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
+                        Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(
                                 text = "Buscar otra imagen de catálogo en internet:",
                                 style = MaterialTheme.typography.labelSmall,
@@ -270,7 +284,7 @@ fun ConfirmGeminiProductDialog(
                                     value = customSearchQuery,
                                     onValueChange = { customSearchQuery = it },
                                     modifier = Modifier.weight(1f),
-                                    placeholder = { Text("Ej: Pampers Premium Care RN") },
+                                    placeholder = { Text("Ej: Pampers Talla P") },
                                     singleLine = true,
                                     shape = RoundedCornerShape(8.dp)
                                 )
@@ -292,24 +306,14 @@ fun ConfirmGeminiProductDialog(
                                     enabled = !isSearchingMoreImages && customSearchQuery.isNotBlank()
                                 ) {
                                     if (isSearchingMoreImages) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(16.dp),
-                                            color = MaterialTheme.colorScheme.onPrimary,
-                                            strokeWidth = 2.dp
-                                        )
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                                     } else {
                                         Text("Buscar", fontSize = 12.sp)
                                     }
                                 }
                             }
 
-                            // Candidatos de imágenes devueltos
                             if (searchCandidates.isNotEmpty()) {
-                                Text(
-                                    text = "Toca una imagen para aplicarla al producto:",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -321,16 +325,10 @@ fun ConfirmGeminiProductDialog(
                                         if (bmp != null) {
                                             Box(
                                                 modifier = Modifier
-                                                    .size(72.dp)
+                                                    .size(70.dp)
                                                     .clip(RoundedCornerShape(8.dp))
                                                     .background(Color.White)
-                                                    .border(
-                                                        BorderStroke(
-                                                            if (currentPhotoBase64 == candidateBase64) 2.dp else 1.dp,
-                                                            if (currentPhotoBase64 == candidateBase64) MaterialTheme.colorScheme.primary else Color.LightGray
-                                                        ),
-                                                        RoundedCornerShape(8.dp)
-                                                    )
+                                                    .border(BorderStroke(1.dp, Color.LightGray), RoundedCornerShape(8.dp))
                                                     .clickable {
                                                         currentPhotoBase64 = candidateBase64
                                                         catalogPhotoBase64 = candidateBase64
@@ -341,9 +339,7 @@ fun ConfirmGeminiProductDialog(
                                                 Image(
                                                     bitmap = bmp.asImageBitmap(),
                                                     contentDescription = null,
-                                                    modifier = Modifier
-                                                        .size(68.dp)
-                                                        .padding(4.dp),
+                                                    modifier = Modifier.size(66.dp).padding(4.dp),
                                                     contentScale = ContentScale.Fit
                                                 )
                                             }
@@ -355,7 +351,46 @@ fun ConfirmGeminiProductDialog(
                     }
                 }
 
-                // Nombre
+                // 3. AVISO INTELIGENTE: Si falta información (ingredientes o vencimiento), solicitar foto de reverso
+                if (initialProduct.missingInfoPrompt.isNotBlank() || (ingredients.isBlank() && category in listOf(ProductCategory.WIPES_HYGIENE, ProductCategory.HEALTH, ProductCategory.FEEDING))) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+                        border = BorderStroke(1.dp, Color(0xFFFFB300))
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("📸", fontSize = 18.sp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Falta información de ingredientes o vencimiento",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = Color(0xFFF57F17)
+                                )
+                            }
+                            Text(
+                                text = initialProduct.missingInfoPrompt.ifBlank {
+                                    "No se detectaron ingredientes o fecha de caducidad en el frente. Fotografía el reverso del frasco o caja para completar los datos al 100%."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF37474F)
+                            )
+                            if (onScanBackPhoto != null) {
+                                Button(
+                                    onClick = onScanBackPhoto,
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF57F17))
+                                ) {
+                                    Text("📷 Tomar Foto del Reverso / Ingredientes", color = Color.White, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 4. Nombre del Producto
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
@@ -376,7 +411,7 @@ fun ConfirmGeminiProductDialog(
                     OutlinedTextField(
                         value = model,
                         onValueChange = { model = it },
-                        label = { Text("Modelo / Línea Única") },
+                        label = { Text("Modelo / Presentación") },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     )
@@ -414,25 +449,107 @@ fun ConfirmGeminiProductDialog(
                     }
                 }
 
-                // Talla y Cantidad
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // 5. Talla o Etapa (con selectores rápidos para Venezuela RN, P, M, G)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     OutlinedTextField(
                         value = stageSize,
                         onValueChange = { stageSize = it },
-                        label = { Text("Talla / Etapa (ej: RN)") },
+                        label = { Text("Talla / Etapa (ej: RN, P, M, G, 0-3M)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    if (quickSizes.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            quickSizes.forEach { qSize ->
+                                val isSelected = stageSize.equals(qSize, ignoreCase = true)
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = { stageSize = qSize },
+                                    label = { Text(qSize, fontSize = 11.sp, fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal) }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 6. Paquetes y Unidades por Paquete (Control Estricto de Inventario)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = packageCount.toString(),
+                        onValueChange = { packageCount = it.toIntOrNull()?.coerceAtLeast(1) ?: 1 },
+                        label = { Text("Paquetes") },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     )
                     OutlinedTextField(
-                        value = quantity.toString(),
-                        onValueChange = { quantity = it.toIntOrNull() ?: 1 },
-                        label = { Text("Cantidad") },
+                        value = unitsPerPackage.toString(),
+                        onValueChange = { unitsPerPackage = it.toIntOrNull()?.coerceAtLeast(1) ?: 1 },
+                        label = { Text("Uds / Paquete") },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     )
                 }
 
-                // Ingredientes / Materiales
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                ) {
+                    Text(
+                        text = "📦 Total: $packageCount paquete(s) × $unitsPerPackage uds = $totalCalculatedUnits unidades registradas",
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
+                // 7. Código de Barras y Variante para Venezuela
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = barcode,
+                        onValueChange = {
+                            barcode = it
+                            countryVariant = BarcodeHelper.resolveCountryVariant(it, manufacturedIn)
+                        },
+                        label = { Text("Código de Barras (EAN)") },
+                        placeholder = { Text("Ej: 759...") },
+                        modifier = Modifier.weight(1.2f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    OutlinedTextField(
+                        value = countryVariant,
+                        onValueChange = { countryVariant = it },
+                        label = { Text("Variante País") },
+                        placeholder = { Text("Venezuela 🇻🇪") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                // 8. Ropita: Edad útil recomendada y meses
+                if (category == ProductCategory.CLOTHING || usefulUntilAge.isNotBlank()) {
+                    OutlinedTextField(
+                        value = usefulUntilAge,
+                        onValueChange = { usefulUntilAge = it },
+                        label = { Text("👕 Edad Útil Estimada") },
+                        placeholder = { Text("Ej: Útil hasta los 3 meses (~6 kg de peso)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                // 9. Ingredientes / Materiales
                 OutlinedTextField(
                     value = ingredients,
                     onValueChange = { ingredients = it },
@@ -442,7 +559,7 @@ fun ConfirmGeminiProductDialog(
                     minLines = 2
                 )
 
-                // Riesgos y Advertencias
+                // 10. Riesgos y Advertencias
                 OutlinedTextField(
                     value = risksAndWarnings,
                     onValueChange = { risksAndWarnings = it },
@@ -478,7 +595,12 @@ fun ConfirmGeminiProductDialog(
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = manufacturedIn,
-                        onValueChange = { manufacturedIn = it },
+                        onValueChange = {
+                            manufacturedIn = it
+                            if (countryVariant.isBlank() || countryVariant == "Internacional") {
+                                countryVariant = BarcodeHelper.resolveCountryVariant(barcode, it)
+                            }
+                        },
                         label = { Text("Fabricado en") },
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
@@ -490,6 +612,23 @@ fun ConfirmGeminiProductDialog(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     )
+                }
+
+                // Estado (Comprado vs Regalado / Baby Shower)
+                Text(text = "Tipo de Adquisición:", style = MaterialTheme.typography.labelMedium)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    ProductStatus.entries.forEach { st ->
+                        FilterChip(
+                            selected = status == st,
+                            onClick = { status = st },
+                            label = { Text(st.label, fontSize = 11.sp) }
+                        )
+                    }
                 }
 
                 // Consejo de Gemini
@@ -536,7 +675,10 @@ fun ConfirmGeminiProductDialog(
                                         model = model.trim(),
                                         category = category,
                                         stageSize = stageSize.trim(),
-                                        quantityCurrent = quantity.coerceAtLeast(1),
+                                        packageCount = packageCount.coerceAtLeast(1),
+                                        unitsPerPackage = unitsPerPackage.coerceAtLeast(1),
+                                        quantityCurrent = totalCalculatedUnits,
+                                        status = status,
                                         ingredients = ingredients.trim(),
                                         risksAndWarnings = risksAndWarnings.trim(),
                                         safetyLevel = safetyLevel,
@@ -544,6 +686,10 @@ fun ConfirmGeminiProductDialog(
                                         expirationDate = expirationDate.trim(),
                                         photoBase64 = currentPhotoBase64,
                                         rawPhotoBase64 = rawCameraPhotoBase64,
+                                        barcode = barcode.trim(),
+                                        countryVariant = countryVariant.trim(),
+                                        usefulUntilAge = usefulUntilAge.trim(),
+                                        missingInfoPrompt = "",
                                         geminiOpinion = geminiOpinion.trim(),
                                         registeredBy = registeredBy,
                                         updatedAt = System.currentTimeMillis()

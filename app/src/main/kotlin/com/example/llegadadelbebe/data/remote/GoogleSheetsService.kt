@@ -76,6 +76,11 @@ class GoogleSheetsService {
                 val photoBase64 = item.optString("photoBase64").ifBlank {
                     metaJson?.optString("photoBase64", "") ?: ""
                 }
+                val barcode = metaJson?.optString("barcode", "") ?: ""
+                val countryVariant = metaJson?.optString("countryVariant", "") ?: ""
+                val usefulUntilAge = metaJson?.optString("usefulUntilAge", "") ?: ""
+                val packageCount = metaJson?.optInt("packageCount", 1) ?: 1
+                val unitsPerPackage = metaJson?.optInt("unitsPerPackage", 1) ?: 1
 
                 products.add(
                     BabyProduct(
@@ -85,7 +90,9 @@ class GoogleSheetsService {
                         model = item.optString("model"),
                         category = category,
                         stageSize = item.optString("stageSize"),
-                        quantityCurrent = item.optInt("quantityCurrent", 1),
+                        packageCount = packageCount,
+                        unitsPerPackage = unitsPerPackage,
+                        quantityCurrent = item.optInt("quantityCurrent", packageCount * unitsPerPackage),
                         quantityTarget = item.optInt("quantityTarget", 1),
                         status = status,
                         ingredients = ingredients,
@@ -94,6 +101,9 @@ class GoogleSheetsService {
                         manufacturedIn = manufacturedIn,
                         expirationDate = expirationDate,
                         photoBase64 = photoBase64,
+                        barcode = barcode,
+                        countryVariant = countryVariant,
+                        usefulUntilAge = usefulUntilAge,
                         notes = cleanNotes,
                         geminiOpinion = item.optString("geminiOpinion"),
                         registeredBy = item.optString("registeredBy"),
@@ -178,6 +188,11 @@ class GoogleSheetsService {
             put("safetyLevel", product.safetyLevel.name)
             put("manufacturedIn", product.manufacturedIn)
             put("expirationDate", product.expirationDate)
+            put("packageCount", product.packageCount)
+            put("unitsPerPackage", product.unitsPerPackage)
+            put("barcode", product.barcode)
+            put("countryVariant", product.countryVariant)
+            put("usefulUntilAge", product.usefulUntilAge)
             // Guardar miniatura si cabe holgadamente en la celda de Google Sheets (< 38,000 chars)
             if (product.photoBase64.length < 38000) {
                 put("photoBase64", product.photoBase64)

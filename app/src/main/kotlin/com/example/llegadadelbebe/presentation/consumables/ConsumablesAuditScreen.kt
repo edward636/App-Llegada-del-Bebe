@@ -70,13 +70,16 @@ fun ConsumablesAuditScreen(
     }
 
     val allAudits = remember(summary) {
-        listOf(
+        listOfNotNull(
             summary.diapersRn,
-            summary.diapersSize1,
+            summary.diapersSizeP,
+            summary.diapersSizeM,
+            summary.diapersSizeG,
             summary.wipes,
             summary.babySoaps,
             summary.clothingRn,
-            summary.clothing0to3M
+            summary.clothing0to3M,
+            summary.giftedAudit
         )
     }
 

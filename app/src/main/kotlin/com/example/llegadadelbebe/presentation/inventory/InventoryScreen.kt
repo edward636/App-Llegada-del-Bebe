@@ -53,6 +53,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,7 +70,9 @@ import androidx.compose.ui.window.Dialog
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.llegadadelbebe.core.util.BarcodeScannerHelper
 import com.example.llegadadelbebe.domain.model.BabyProduct
+import kotlinx.coroutines.launch
 import com.example.llegadadelbebe.domain.model.ProductCategory
 import com.example.llegadadelbebe.domain.model.ProductSafetyLevel
 import com.example.llegadadelbebe.domain.model.ProductStatus
@@ -86,6 +89,7 @@ fun InventoryScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val products by viewModel.filteredProducts.collectAsStateWithLifecycle()
     val selectedCategory by viewModel.selectedCategory.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
@@ -98,8 +102,9 @@ fun InventoryScreen(
     var selectedProductForDetail by remember { mutableStateOf<BabyProduct?>(null) }
     var cameraErrorMessage by remember { mutableStateOf("") }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var isScanningBackPhoto by remember { mutableStateOf(false) }
 
-    // Lanzador de Cámara HD (1280px para OCR de Gemini + miniatura 300px para el mosaico)
+    // Lanzador de Cámara HD (1280px para OCR de Gemini + miniatura 300px para el mosaico + escáner de código de barra)
     val highResCameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success: Boolean ->
@@ -109,15 +114,38 @@ fun InventoryScreen(
             if (pair != null) {
                 cameraErrorMessage = ""
                 val (highRes, thumb) = pair
-                viewModel.analyzePhoto(
-                    base64Image = highRes,
-                    thumbnailBase64 = thumb,
-                    apiKey = geminiApiKey
-                ) { extracted ->
-                    if (extracted != null) {
-                        geminiProductToConfirm = extracted
+                coroutineScope.launch {
+                    val barcode = runCatching {
+                        val photoFile = File(context.cacheDir, "camera_photos/capture_gemini.jpg")
+                        val bmp = BitmapFactory.decodeFile(photoFile.absolutePath)
+                        bmp?.let { BarcodeScannerHelper.scanBarcode(it) }
+                    }.getOrNull()
+
+                    val current = geminiProductToConfirm
+                    if (isScanningBackPhoto && current != null) {
+                        isScanningBackPhoto = false
+                        viewModel.complementProductDetailsWithPhoto(
+                            base64Image = highRes,
+                            existingProduct = current,
+                            detectedBarcode = barcode,
+                            apiKey = geminiApiKey
+                        ) { updated ->
+                            geminiProductToConfirm = updated
+                        }
                     } else {
-                        cameraErrorMessage = "No se pudo extraer la información del producto. Intenta con más luz o usa registro manual."
+                        isScanningBackPhoto = false
+                        viewModel.analyzePhoto(
+                            base64Image = highRes,
+                            thumbnailBase64 = thumb,
+                            detectedBarcode = barcode,
+                            apiKey = geminiApiKey
+                        ) { extracted ->
+                            if (extracted != null) {
+                                geminiProductToConfirm = extracted
+                            } else {
+                                cameraErrorMessage = "No se pudo extraer la información del producto. Intenta con más luz o usa registro manual."
+                            }
+                        }
                     }
                 }
             } else {
@@ -155,15 +183,39 @@ fun InventoryScreen(
             if (pair != null) {
                 cameraErrorMessage = ""
                 val (highRes, thumb) = pair
-                viewModel.analyzePhoto(
-                    base64Image = highRes,
-                    thumbnailBase64 = thumb,
-                    apiKey = geminiApiKey
-                ) { extracted ->
-                    if (extracted != null) {
-                        geminiProductToConfirm = extracted
+                coroutineScope.launch {
+                    val barcode = runCatching {
+                        context.contentResolver.openInputStream(uri)?.use { stream ->
+                            val bmp = BitmapFactory.decodeStream(stream)
+                            bmp?.let { BarcodeScannerHelper.scanBarcode(it) }
+                        }
+                    }.getOrNull()
+
+                    val current = geminiProductToConfirm
+                    if (isScanningBackPhoto && current != null) {
+                        isScanningBackPhoto = false
+                        viewModel.complementProductDetailsWithPhoto(
+                            base64Image = highRes,
+                            existingProduct = current,
+                            detectedBarcode = barcode,
+                            apiKey = geminiApiKey
+                        ) { updated ->
+                            geminiProductToConfirm = updated
+                        }
                     } else {
-                        cameraErrorMessage = "No se pudo analizar la foto de la galería."
+                        isScanningBackPhoto = false
+                        viewModel.analyzePhoto(
+                            base64Image = highRes,
+                            thumbnailBase64 = thumb,
+                            detectedBarcode = barcode,
+                            apiKey = geminiApiKey
+                        ) { extracted ->
+                            if (extracted != null) {
+                                geminiProductToConfirm = extracted
+                            } else {
+                                cameraErrorMessage = "No se pudo analizar la foto de la galería."
+                            }
+                        }
                     }
                 }
             }
@@ -358,10 +410,18 @@ fun InventoryScreen(
     geminiProductToConfirm?.let { product ->
         ConfirmGeminiProductDialog(
             initialProduct = product,
-            onDismiss = { geminiProductToConfirm = null },
+            onDismiss = {
+                geminiProductToConfirm = null
+                isScanningBackPhoto = false
+            },
+            onScanBackPhoto = {
+                isScanningBackPhoto = true
+                launchCameraWithUri()
+            },
             onConfirm = { confirmed ->
                 viewModel.addProduct(confirmed, googleSheetUrl)
                 geminiProductToConfirm = null
+                isScanningBackPhoto = false
             }
         )
     }
@@ -425,6 +485,7 @@ fun ProductMosaicTile(
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
     ) {
         val isCatalogPhoto = product.photoBase64.isNotBlank() && product.photoBase64 != product.rawPhotoBase64
+        val isVenezuelan = product.countryVariant.contains("Venezuela", ignoreCase = true)
 
         Column(modifier = Modifier.fillMaxWidth()) {
             // 1. Miniatura de la Foto del Producto (Estilo Catálogo E-Commerce) o Ícono de Categoría
@@ -452,22 +513,39 @@ fun ProductMosaicTile(
                     Text(text = product.category.icon, fontSize = 42.sp)
                 }
 
-                // Insignia Superior Izquierda: Destello de Foto de Catálogo Limpia
-                if (isCatalogPhoto) {
-                    Surface(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(6.dp),
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f)
-                    ) {
-                        Text(
-                            text = "✨ Catálogo",
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
+                // Insignias Superiores Izquierdas: Catálogo Limpio y/o Variante Venezuela
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    if (isCatalogPhoto) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f)
+                        ) {
+                            Text(
+                                text = "✨ Catálogo",
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                    if (isVenezuelan) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFFFF9C4)
+                        ) {
+                            Text(
+                                text = "🇻🇪",
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
 
@@ -486,7 +564,7 @@ fun ProductMosaicTile(
                     )
                 }
 
-                // Insignia de Talla / Etapa en esquina inferior izquierda
+                // Insignia de Talla / Etapa en esquina inferior izquierda (RN, P, M, G)
                 if (product.stageSize.isNotBlank()) {
                     Surface(
                         modifier = Modifier
@@ -535,6 +613,17 @@ fun ProductMosaicTile(
                     fontWeight = FontWeight.SemiBold
                 )
 
+                if (product.usefulUntilAge.isNotBlank()) {
+                    Text(
+                        text = "👕 ${product.usefulUntilAge}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        fontSize = 10.sp
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(2.dp))
 
                 Row(
@@ -543,10 +632,13 @@ fun ProductMosaicTile(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Cant: ${product.quantityCurrent}",
+                        text = product.displayQuantityLabel,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
 
                     Surface(

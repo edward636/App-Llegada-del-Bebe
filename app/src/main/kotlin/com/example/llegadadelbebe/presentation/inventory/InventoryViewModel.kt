@@ -2,6 +2,7 @@ package com.example.llegadadelbebe.presentation.inventory
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.llegadadelbebe.core.util.BarcodeHelper
 import com.example.llegadadelbebe.data.remote.CatalogImageFetcher
 import com.example.llegadadelbebe.data.remote.GeminiClient
 import com.example.llegadadelbebe.data.repository.BabyInventoryRepository
@@ -99,6 +100,7 @@ class InventoryViewModel(
     fun analyzePhoto(
         base64Image: String,
         thumbnailBase64: String = "",
+        detectedBarcode: String? = null,
         apiKey: String,
         onComplete: (BabyProduct?) -> Unit
     ) {
@@ -112,6 +114,14 @@ class InventoryViewModel(
             if (result.isSuccess) {
                 var extracted = result.getOrNull()?.copy(registeredBy = _activeUser.value)
                 if (extracted != null) {
+                    // Integrar código de barra (de ML Kit o de Gemini) y resolver variante para Venezuela
+                    val finalBarcode = if (!detectedBarcode.isNullOrBlank()) detectedBarcode else extracted.barcode
+                    val resolvedVariant = BarcodeHelper.resolveCountryVariant(finalBarcode, extracted.manufacturedIn)
+                    extracted = extracted.copy(
+                        barcode = finalBarcode,
+                        countryVariant = resolvedVariant
+                    )
+
                     // Buscar imagen de catálogo limpia (fondo blanco e-commerce) en internet
                     val catalogThumb = CatalogImageFetcher.fetchCleanCatalogThumbnail(
                         name = extracted.name,
@@ -136,6 +146,39 @@ class InventoryViewModel(
             } else {
                 _isAnalyzingPhoto.value = false
                 onComplete(null)
+            }
+        }
+    }
+
+    /**
+     * Toma una segunda foto (reverso / tabla de ingredientes) y la fusiona en el producto existente.
+     */
+    fun complementProductDetailsWithPhoto(
+        base64Image: String,
+        existingProduct: BabyProduct,
+        detectedBarcode: String? = null,
+        apiKey: String,
+        onComplete: (BabyProduct) -> Unit
+    ) {
+        viewModelScope.launch {
+            _isAnalyzingPhoto.value = true
+            val result = geminiClient.extractAdditionalDetailsFromImage(
+                base64Image = base64Image,
+                existingProduct = existingProduct,
+                apiKey = apiKey
+            )
+            _isAnalyzingPhoto.value = false
+            if (result.isSuccess) {
+                var updated = result.getOrNull() ?: existingProduct
+                val finalBarcode = if (!detectedBarcode.isNullOrBlank()) detectedBarcode else updated.barcode
+                val resolvedVariant = BarcodeHelper.resolveCountryVariant(finalBarcode, updated.manufacturedIn)
+                updated = updated.copy(
+                    barcode = finalBarcode,
+                    countryVariant = resolvedVariant
+                )
+                onComplete(updated)
+            } else {
+                onComplete(existingProduct)
             }
         }
     }

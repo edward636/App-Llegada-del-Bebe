@@ -2,11 +2,13 @@ package com.example.llegadadelbebe
 
 import com.example.llegadadelbebe.core.security.SecureConfig
 import com.example.llegadadelbebe.core.update.OtaUpdateManager
+import com.example.llegadadelbebe.core.util.BarcodeHelper
 import com.example.llegadadelbebe.core.util.PregnancyCalculator
 import com.example.llegadadelbebe.core.util.ZodiacPredictor
 import com.example.llegadadelbebe.data.remote.CatalogImageFetcher
 import com.example.llegadadelbebe.domain.model.BabyProduct
 import com.example.llegadadelbebe.domain.model.ProductCategory
+import com.example.llegadadelbebe.domain.model.ProductStatus
 import com.example.llegadadelbebe.domain.model.StockStatus
 import com.example.llegadadelbebe.domain.usecase.EvaluateConsumablesUseCase
 import org.junit.Assert.assertEquals
@@ -131,5 +133,47 @@ class PregnancyAndZodiacTest {
         // Bing Image search must return valid http/https image links
         assertTrue(urls.isNotEmpty())
         assertTrue(urls.first().startsWith("http"))
+    }
+
+    @Test
+    fun testEvaluateConsumables_VenezuelanSizesAndPackages() {
+        val useCase = EvaluateConsumablesUseCase()
+        val products = listOf(
+            BabyProduct(
+                id = "p1",
+                name = "Pampers Talla P",
+                category = ProductCategory.DIAPERS,
+                stageSize = "P",
+                packageCount = 2,
+                unitsPerPackage = 36, // 2 * 36 = 72 pañales P
+                status = ProductStatus.PURCHASED
+            ),
+            BabyProduct(
+                id = "p2",
+                name = "Huggies Talla G",
+                category = ProductCategory.DIAPERS,
+                stageSize = "G",
+                packageCount = 1,
+                unitsPerPackage = 40,
+                status = ProductStatus.GIFTED // Obsequio en baby shower
+            )
+        )
+
+        val summary = useCase.execute(products)
+        assertEquals(72, summary.diapersSizeP.currentUnits)
+        assertEquals(40, summary.diapersSizeG.currentUnits)
+        assertEquals(40, summary.giftedAudit?.currentUnits)
+    }
+
+    @Test
+    fun testBarcodeHelper_ResolvesVenezuelanPrefix() {
+        val veVariant = BarcodeHelper.resolveCountryVariant("7591234567890", "")
+        assertTrue(veVariant.contains("Venezuela 🇻🇪"))
+
+        val coVariant = BarcodeHelper.resolveCountryVariant("7701234567890", "")
+        assertTrue(coVariant.contains("Colombia 🇨🇴"))
+
+        val fallbackVariant = BarcodeHelper.resolveCountryVariant("", "Venezuela")
+        assertTrue(fallbackVariant.contains("Venezuela 🇻🇪"))
     }
 }
