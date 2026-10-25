@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
+import android.media.ExifInterface
 import android.net.Uri
 import android.util.Base64
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -99,7 +101,7 @@ fun InventoryScreen(
     val highResCameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success: Boolean ->
-        val uri = pendingCameraUri
+        val uri = pendingCameraUri ?: runCatching { getDeterministicCameraUri(context) }.getOrNull()
         if (success && uri != null) {
             val pair = uriToHighResAndThumbBase64(context, uri)
             if (pair != null) {
@@ -124,14 +126,7 @@ fun InventoryScreen(
 
     val launchCameraWithUri = {
         try {
-            val photoDir = File(context.cacheDir, "camera_photos")
-            if (!photoDir.exists()) photoDir.mkdirs()
-            val photoFile = File(photoDir, "capture_gemini.jpg")
-            val uri = FileProvider.getUriForFile(
-                context,
-                "${context.packageName}.fileprovider",
-                photoFile
-            )
+            val uri = getDeterministicCameraUri(context)
             pendingCameraUri = uri
             highResCameraLauncher.launch(uri)
         } catch (e: Exception) {
@@ -573,6 +568,17 @@ fun ProductMosaicTile(
     }
 }
 
+private fun getDeterministicCameraUri(context: Context): Uri {
+    val photoDir = File(context.cacheDir, "camera_photos")
+    if (!photoDir.exists()) photoDir.mkdirs()
+    val photoFile = File(photoDir, "capture_gemini.jpg")
+    return FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        photoFile
+    )
+}
+
 private fun scaleBitmapDown(bitmap: Bitmap, maxDimension: Int): Bitmap {
     val width = bitmap.width
     val height = bitmap.height
@@ -590,19 +596,52 @@ private fun scaleBitmapDown(bitmap: Bitmap, maxDimension: Int): Bitmap {
 /**
  * Genera tanto la imagen de alta nitidez (1280px, JPEG 85%) para el análisis OCR de Gemini 3.8
  * como una miniatura ligera (300px, JPEG 70%, ~12KB) para guardar en el mosaico y sincronizar en Google Sheets.
+ * Incluye sub-muestreo (inSampleSize) contra errores de memoria en cámaras de 50MP/200MP
+ * y rotación automática según metadatos EXIF para que las fotos nunca salgan volteadas.
  */
 private fun uriToHighResAndThumbBase64(context: Context, uri: Uri): Pair<String, String>? {
     return try {
-        val bitmap = context.contentResolver.openInputStream(uri)?.use { inputStream ->
-            BitmapFactory.decodeStream(inputStream)
+        // 1. Leer dimensiones sin cargar en RAM (protección OOM para sensores de 200MP)
+        val boundsOptions = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            BitmapFactory.decodeStream(inputStream, null, boundsOptions)
+        }
+
+        var sampleSize = 1
+        val maxSide = maxOf(boundsOptions.outWidth, boundsOptions.outHeight)
+        while (maxSide / sampleSize > 2048) {
+            sampleSize *= 2
+        }
+
+        val decodeOptions = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        val rawBitmap = context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            BitmapFactory.decodeStream(inputStream, null, decodeOptions)
         } ?: return null
 
-        val highResBitmap = scaleBitmapDown(bitmap, 1280)
+        // 2. Corregir orientación EXIF (Xiaomi HyperOS / Oppo ColorOS)
+        val rotationDegrees = context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            val exif = ExifInterface(inputStream)
+            when (exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                else -> 0f
+            }
+        } ?: 0f
+
+        val orientedBitmap = if (rotationDegrees != 0f) {
+            val matrix = Matrix().apply { postRotate(rotationDegrees) }
+            Bitmap.createBitmap(rawBitmap, 0, 0, rawBitmap.width, rawBitmap.height, matrix, true)
+        } else {
+            rawBitmap
+        }
+
+        val highResBitmap = scaleBitmapDown(orientedBitmap, 1280)
         val highResStream = ByteArrayOutputStream()
         highResBitmap.compress(Bitmap.CompressFormat.JPEG, 85, highResStream)
         val highResBase64 = Base64.encodeToString(highResStream.toByteArray(), Base64.NO_WRAP)
 
-        val thumbBitmap = scaleBitmapDown(bitmap, 300)
+        val thumbBitmap = scaleBitmapDown(orientedBitmap, 300)
         val thumbStream = ByteArrayOutputStream()
         thumbBitmap.compress(Bitmap.CompressFormat.JPEG, 70, thumbStream)
         val thumbBase64 = Base64.encodeToString(thumbStream.toByteArray(), Base64.NO_WRAP)

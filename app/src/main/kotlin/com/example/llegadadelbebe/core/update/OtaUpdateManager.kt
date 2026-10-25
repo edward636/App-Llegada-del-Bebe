@@ -202,6 +202,9 @@ object OtaUpdateManager {
             var redirectCount = 0
             while (true) {
                 val u = URL(currentUrl)
+                if (!u.protocol.equals("https", ignoreCase = true)) {
+                    throw SecurityException("Por seguridad, solo se permiten actualizaciones OTA sobre HTTPS.")
+                }
                 connection = (u.openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
                     connectTimeout = 15000
@@ -258,6 +261,13 @@ object OtaUpdateManager {
             if (tempFile.length() < 1_000_000L) {
                 tempFile.delete()
                 throw IOException("El archivo descargado está incompleto (${tempFile.length()} bytes).")
+            }
+
+            // Verificar firma de paquete e integridad del APK antes de instalar
+            val archiveInfo = context.packageManager.getPackageArchiveInfo(tempFile.absolutePath, 0)
+            if (archiveInfo == null || archiveInfo.packageName != context.packageName) {
+                tempFile.delete()
+                throw SecurityException("El APK descargado no es válido o no corresponde a esta aplicación.")
             }
 
             if (finalApkFile.exists()) finalApkFile.delete()

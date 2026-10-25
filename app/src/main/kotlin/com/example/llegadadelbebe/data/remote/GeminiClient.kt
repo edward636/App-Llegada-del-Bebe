@@ -197,13 +197,14 @@ class GeminiClient(
 
         for (model in modelChain) {
             try {
-                val url = URL("${getUrlForModel(model)}?key=$apiKey")
+                val url = URL(getUrlForModel(model))
                 val connection = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
                     connectTimeout = 10000
                     readTimeout = 20000
                     doOutput = true
                     setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                    setRequestProperty("x-goog-api-key", apiKey)
                 }
 
                 OutputStreamWriter(connection.outputStream, "UTF-8").use { writer ->
