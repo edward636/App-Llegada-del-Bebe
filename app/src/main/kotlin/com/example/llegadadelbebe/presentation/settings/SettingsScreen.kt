@@ -22,8 +22,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -39,10 +39,14 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.llegadadelbebe.APP_VERSION_CODE
+import com.example.llegadadelbebe.APP_VERSION_NAME
 import com.example.llegadadelbebe.core.security.SecureConfig
 import com.example.llegadadelbebe.core.update.OtaUpdateManager
 import kotlinx.coroutines.launch
@@ -56,6 +60,7 @@ fun SettingsScreen(
     onSaveBabySettings: (name: String, weeks: Int, days: Int) -> Unit,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var name by remember { mutableStateOf(babyName.ifBlank { "Nuestro Bebé" }) }
     var weeks by remember { mutableIntStateOf(currentWeeks) }
@@ -63,6 +68,7 @@ fun SettingsScreen(
 
     var otaCheckStatus by remember { mutableStateOf("") }
     var isCheckingOta by remember { mutableStateOf(false) }
+    var downloadProgress by remember { mutableIntStateOf(-1) }
 
     Scaffold(
         modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
@@ -230,7 +236,7 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "v1.0.1",
+                            text = "v$APP_VERSION_NAME",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold
                         )
@@ -251,36 +257,70 @@ fun SettingsScreen(
                         )
                     }
 
+                    if (downloadProgress >= 0) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Descargando actualización: $downloadProgress%",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        LinearProgressIndicator(
+                            progress = { downloadProgress / 100f },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(RoundedCornerShape(4.dp)),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+                    }
+
                     Button(
                         onClick = {
                             coroutineScope.launch {
                                 isCheckingOta = true
-                                otaCheckStatus = "Comprobando en GitHub..."
+                                otaCheckStatus = "🔍 Comprobando actualizaciones en GitHub..."
                                 val result = OtaUpdateManager.checkForUpdate(
-                                    currentVersionCode = 2,
+                                    currentVersionCode = APP_VERSION_CODE,
                                     checkUrl = SecureConfig.getGoogleSheetUrl()
                                 )
-                                isCheckingOta = false
                                 if (result.isSuccess) {
                                     val info = result.getOrNull()
-                                    if (info != null && info.hasUpdate) {
-                                        otaCheckStatus = "🎉 ¡Nueva versión ${info.latestVersionName} lista para instalar!"
+                                    if (info != null && info.hasUpdate && info.apkUrl.isNotBlank()) {
+                                        otaCheckStatus = "📥 ¡Nueva versión ${info.latestVersionName} lista! Descargando..."
+                                        downloadProgress = 0
+                                        val downloadResult = OtaUpdateManager.downloadAndInstallApk(
+                                            context = context,
+                                            apkUrl = info.apkUrl,
+                                            onProgress = { progress -> downloadProgress = progress }
+                                        )
+                                        isCheckingOta = false
+                                        if (downloadResult.isSuccess) {
+                                            otaCheckStatus = "🚀 Instalador abierto. Confirma la actualización en pantalla."
+                                        } else {
+                                            val err = downloadResult.exceptionOrNull()?.localizedMessage ?: "Error desconocido"
+                                            otaCheckStatus = "❌ Error al descargar/instalar: $err"
+                                            downloadProgress = -1
+                                        }
                                     } else {
-                                        otaCheckStatus = "✅ Tu app ya cuenta con la versión más reciente (v1.0.1)."
+                                        isCheckingOta = false
+                                        otaCheckStatus = "✅ ¡Tu app ya está en la versión más reciente (v$APP_VERSION_NAME)!"
                                     }
                                 } else {
-                                    otaCheckStatus = "✅ App actualizada al día (v1.0.1)."
+                                    isCheckingOta = false
+                                    otaCheckStatus = "⚠️ No se pudo comprobar actualización. Revisa la conexión a internet."
                                 }
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        enabled = !isCheckingOta
+                        enabled = !isCheckingOta && downloadProgress < 0
                     ) {
                         if (isCheckingOta) {
                             CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White)
                         } else {
-                            Text("Buscar Actualizaciones Ahora")
+                            Text("Buscar y Actualizar Ahora")
                         }
                     }
                 }

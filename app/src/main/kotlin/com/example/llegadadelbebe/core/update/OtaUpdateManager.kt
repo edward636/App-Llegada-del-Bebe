@@ -2,6 +2,9 @@ package com.example.llegadadelbebe.core.update
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -136,7 +139,7 @@ object OtaUpdateManager {
     }
 
     /**
-     * Descarga el APK en caché y lanza el instalador nativo del sistema Android.
+     * Descarga el APK en caché manejando redirecciones y lanza el instalador nativo de Android.
      */
     suspend fun downloadAndInstallApk(
         context: Context,
@@ -150,17 +153,36 @@ object OtaUpdateManager {
             val apkFile = File(updatesDir, "update_bebe.apk")
             if (apkFile.exists()) apkFile.delete()
 
-            val url = URL(apkUrl)
-            val connection = (url.openConnection() as HttpURLConnection).apply {
-                connectTimeout = 15000
-                readTimeout = 30000
-                instanceFollowRedirects = true
+            // Manejar redirecciones explícitamente (GitHub 302 -> CDN Azure/AWS)
+            var currentUrl = apkUrl
+            var connection: HttpURLConnection
+            var redirectCount = 0
+            while (true) {
+                val u = URL(currentUrl)
+                connection = (u.openConnection() as HttpURLConnection).apply {
+                    connectTimeout = 15000
+                    readTimeout = 30000
+                    instanceFollowRedirects = true
+                    setRequestProperty("User-Agent", "AppLlegadaDelBebe-Android")
+                    setRequestProperty("Accept", "*/*")
+                }
+                val responseCode = connection.responseCode
+                if (responseCode in 301..308) {
+                    val newLocation = connection.getHeaderField("Location")
+                    if (!newLocation.isNullOrBlank() && redirectCount < 5) {
+                        currentUrl = newLocation
+                        redirectCount++
+                        connection.disconnect()
+                        continue
+                    }
+                }
+                break
             }
 
             val fileLength = connection.contentLength
             connection.inputStream.use { input ->
                 FileOutputStream(apkFile).use { output ->
-                    val data = ByteArray(4096)
+                    val data = ByteArray(8192)
                     var total: Long = 0
                     var count: Int
                     while (input.read(data).also { count = it } != -1) {
@@ -168,15 +190,31 @@ object OtaUpdateManager {
                         if (fileLength > 0) {
                             val progress = ((total * 100) / fileLength).toInt()
                             withContext(Dispatchers.Main) { onProgress(progress) }
+                        } else {
+                            val estimatedProgress = ((total * 100) / 12500000).toInt().coerceAtMost(99)
+                            withContext(Dispatchers.Main) { onProgress(estimatedProgress) }
                         }
                         output.write(data, 0, count)
                     }
                     output.flush()
                 }
             }
+            withContext(Dispatchers.Main) { onProgress(100) }
 
-            // Lanzar el instalador nativo de Android usando FileProvider
+            // Comprobar permiso de instalación en Android 8+ (Oppo Reno 12F & Redmi Note 13 Pro+)
             withContext(Dispatchers.Main) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    if (!context.packageManager.canRequestPackageInstalls()) {
+                        val manageIntent = Intent(
+                            Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                            Uri.parse("package:${context.packageName}")
+                        ).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        context.startActivity(manageIntent)
+                    }
+                }
+
                 val apkUri = FileProvider.getUriForFile(
                     context,
                     "${context.packageName}.fileprovider",
