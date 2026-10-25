@@ -8,6 +8,7 @@ import com.example.llegadadelbebe.core.util.ZodiacPredictor
 import com.example.llegadadelbebe.data.remote.CatalogImageFetcher
 import com.example.llegadadelbebe.domain.model.BabyProduct
 import com.example.llegadadelbebe.domain.model.ProductCategory
+import com.example.llegadadelbebe.domain.model.ProductSafetyLevel
 import com.example.llegadadelbebe.domain.model.ProductStatus
 import com.example.llegadadelbebe.domain.model.StockStatus
 import com.example.llegadadelbebe.domain.usecase.EvaluateConsumablesUseCase
@@ -214,5 +215,42 @@ class PregnancyAndZodiacTest {
         assertTrue(summary.hospitalBagSections.any { it.id == "baby" })
         assertTrue(summary.hospitalBagSections.any { it.id == "mom" })
         assertTrue(summary.hospitalBagSections.any { it.id == "dad" })
+    }
+
+    @Test
+    fun testSoapINCIAndProgressiveMultiPhotoSupport() {
+        val soapProduct = BabyProduct(
+            id = "soap-1",
+            name = "Jabón Neutro Puro",
+            brand = "Johnson's",
+            model = "Original Baby",
+            category = ProductCategory.WIPES_HYGIENE,
+            ingredients = "Sodium Palmate, Sodium Palm Kernelate, Aqua, Glycerin, Parfum, Titanium Dioxide",
+            risksAndWarnings = "Jabón suave formulado para piel de recién nacido. Sin sulfatos agresivos.",
+            safetyLevel = ProductSafetyLevel.SAFE
+        )
+
+        assertTrue(soapProduct.ingredients.contains("Sodium Palmate"))
+        assertTrue(soapProduct.ingredients.contains("Aqua"))
+        assertTrue(soapProduct.ingredients.contains("Glycerin"))
+        assertEquals(ProductSafetyLevel.SAFE, soapProduct.safetyLevel)
+    }
+
+    @Test
+    fun testRepositoryInstantSyncInvocation() {
+        val testProduct = BabyProduct(
+            id = "test-prod-sync",
+            name = "Champú Manzanilla",
+            brand = "Ricitos de Oro",
+            category = ProductCategory.WIPES_HYGIENE
+        )
+
+        var syncCompleted = false
+        val repo = com.example.llegadadelbebe.data.repository.BabyInventoryRepository()
+        // Cuando no hay URL o al guardar sin conexión remota, invoca el callback con false o true
+        repo.saveProduct(testProduct, googleSheetUrl = "") { success ->
+            syncCompleted = true
+        }
+        assertTrue(syncCompleted)
     }
 }

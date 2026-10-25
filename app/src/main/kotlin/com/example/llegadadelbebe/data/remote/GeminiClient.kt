@@ -53,7 +53,8 @@ class GeminiClient(
                 Analiza con máxima precisión la fotografía del producto o su empaque (pañales, ropita, toallitas, champús, colonias, cortauñas, termómetro, cremas, teteros/biberones, medicinas, etc.).
 
                 Pautas específicas:
-                - REGLA DE ORO DE VERACIDAD (CERO ALUCINACIÓN): NUNCA inventes o supongas ingredientes, lote, unidades o fecha de vencimiento que no estén 100% legibles en la imagen. Si un producto de higiene, salud, pañales o alimentación no muestra los ingredientes o la fecha de caducidad en esta cara frontal, deja "ingredientes_materiales": "", marca "informacion_incompleta": true, y en "que_falta" redacta: "Falta fotografiar el reverso del empaque para leer la tabla de ingredientes y la fecha de caducidad con exactitud."
+                - REGLA DE ORO DE VERACIDAD (CERO ALUCINACIÓN): NUNCA inventes o supongas ingredientes, lote, unidades o fecha de vencimiento que no estén 100% legibles en la imagen. Si un producto de higiene, salud, pañales o alimentación no muestra los ingredientes o la fecha de caducidad en esta cara frontal, deja "ingredientes_materiales": "", marca "informacion_incompleta": true, y en "que_falta" redacta: "Falta fotografiar el reverso o lateral del empaque para leer la tabla de ingredientes (en inglés o español) y la fecha de caducidad con exactitud."
+                - INGREDIENTES EN INGLÉS / NOMENCLATURA INCI (CRUCIAL PARA JABONES, CHAMPÚS, CREMAS Y TOALLITAS): En la gran mayoría de jabones (en barra o líquidos), champús, geles de baño, cremas y lociones para bebés, la lista de ingredientes está obligatoriamente redactada en INGLÉS o bajo la norma internacional INCI (ej: 'INGREDIENTS: Sodium Palmate, Aqua, Glycerin, Sodium Palm Kernelate, Parfum, Titanium Dioxide, Tetrasodium EDTA...', o 'Water (Aqua), Cocamidopropyl Betaine, Sodium Cocoyl Isethionate, Stearic Acid...'). DEBES DETECTARLA Y EXTRAERLA OBLIGATORIAMENTE sin importar si está en INGLÉS, LATÍN, ESPAÑOL o bilingüe. Busca palabras clave: 'INGREDIENTS:', 'INGREDIENTES:', 'Aqua', 'Water', 'Sodium', 'Glycerin', 'Acid', 'Oil', 'Extract'. Transcribe todos los ingredientes en 'ingredientes_materiales'. En 'riesgos_advertencias', traduce y explica en español su función y perfil de seguridad pediátrica para recién nacidos (ej: 'Jabón vegetal neutro con glicerina hidratante. Libre de parabenos y sulfatos agresivos').
                 - En PAÑALES: En Venezuela se usan las tallas RN (Recién Nacido / hasta 4.5kg), P (Pequeño / 4-6kg), M (Mediano / 6-9.5kg), G (Grande / 9-12.5kg), XG, XXG. Si el paquete indica Etapa 1 asócialo a Talla P, Etapa 2 a Talla M, Etapa 3 a Talla G.
                 - En CONTEO: Identifica si viene por paquete (ej: 1 paquete de 24 pañales -> paquetes: 1, unidades_por_paquete: 24, unidades_totales: 24; toallitas de 80 unidades -> paquetes: 1, unidades_por_paquete: 80).
                 - En ROPITA: Identifica talla (RN, 0-3M, 3-6M, etc.), tipo de tela (ej: 100% Algodón Pima) y analiza "edad_util": hasta qué edad en meses o peso estimado puede usarla el bebé antes de que le quede pequeña.
@@ -193,16 +194,35 @@ class GeminiClient(
     ): Result<BabyProduct> = withContext(Dispatchers.IO) {
         try {
             val promptText = """
-                Eres un pediatra neonatólogo y químico cosmético analizando la fotografía del REVERSO, LATERAL o TABLA DE INGREDIENTES del producto de bebé: "${existingProduct.brand} ${existingProduct.name} ${existingProduct.model}".
-                Extrae con máxima precisión los datos complementarios que estaban ausentes o incompletos:
+                Eres un pediatra neonatólogo y químico cosmético analizando una fotografía ADICIONAL (reverso, lateral, tabla de ingredientes o código de barra) del producto de bebé: "${existingProduct.brand} ${existingProduct.name} ${existingProduct.model}".
+                
+                ESTADO ACTUAL DEL PRODUCTO:
+                - Nombre: ${existingProduct.name}
+                - Marca: ${existingProduct.brand}
+                - Ingredientes detectados hasta ahora: ${existingProduct.ingredients.ifBlank { "NINGUNO DETECTADO AÚN" }}
+                - Vencimiento previo: ${existingProduct.expirationDate.ifBlank { "NO DETECTADO AÚN" }}
+                - Código de barras previo: ${existingProduct.barcode.ifBlank { "NO DETECTADO AÚN" }}
+                
+                DIRECTIVAS OBLIGATORIAS:
+                1. INGREDIENTES EN INGLÉS / INCI (MÁXIMA PRIORIDAD PARA JABONES, CHAMPÚS, LOCIONES, POMADAS Y TOALLITAS):
+                   En jabones de bebé (en barra o líquido), geles, champús y cremas corporales, casi el 100% de los envases imprimen la lista de ingredientes en INGLÉS o según el estándar cosmético internacional INCI.
+                   Palabras clave a buscar: 'INGREDIENTS:', 'INGREDIENTES:', 'CONTIENE:', 'COMPOSITION:', 'FORMULA:', 'ACTIVE INGREDIENTS:', 'INACTIVE INGREDIENTS:'.
+                   Componentes típicos: Sodium Palmate, Sodium Palm Kernelate, Aqua/Water, Glycerin, Stearic Acid, Sodium Tallowate, Titanium Dioxide, Tetrasodium EDTA, Etidronic Acid, Cocamidopropyl Betaine, Tocopherol, Avena Sativa, Chamomilla Recutita, etc.
+                   INSTRUCCIÓN ESTRICTA: Si la imagen muestra cualquier lista de ingredientes o componentes en INGLÉS, DEBES TRANSCRIBIRLOS ÍNTEGRAMENTE en "ingredientes_materiales". NUNCA los descartes por estar en inglés. En "riesgos_advertencias", analiza y explica en español su compatibilidad dérmica con la piel de un recién nacido.
+                2. CONTINUIDAD MULTI-FOTO (NO LIMITARSE):
+                   - Si esta foto muestra los ingredientes (en inglés o español), extrae la lista completa en "ingredientes_materiales".
+                   - Si a pesar de esta toma AÚN NO se logran leer los ingredientes o vencimiento con claridad, marca "informacion_incompleta": true y en "que_falta" redacta una guía clara (ej: "Aún no se aprecian los ingredientes con claridad. Toma una foto con mayor acercamiento al lateral donde dice 'INGREDIENTS:'").
+                   - Si ya se leyeron con éxito los ingredientes y datos esenciales, marca "informacion_incompleta": false y "que_falta": "".
+                
                 Devuelve únicamente un objeto JSON con las siguientes claves:
-                1. "ingredientes_materiales": Lista detallada de ingredientes activos/inactivos o composición textil visible.
+                1. "ingredientes_materiales": Lista completa de ingredientes detectados (en inglés o español).
                 2. "fecha_vencimiento": Fecha de vencimiento o caducidad visible (ej: 05/2027) o "N/A" si no vence.
                 3. "codigo_barra": Números del código de barras si son visibles en esta toma.
                 4. "fabricado_en": País de origen, laboratorio o distribuidor.
-                5. "riesgos_advertencias": Análisis de riesgos, fragancias, alcohol, parabenos, o confirmación de fórmula hipoalergénica.
+                5. "riesgos_advertencias": Análisis de riesgos, fragancias, sulfatos o confirmación de fórmula hipoalergénica en español.
                 6. "nivel_seguridad": "SAFE", "CAUTION" o "WARNING".
-                7. "opinion_complementaria": Breve evaluación pediátrica del reverso.
+                7. "informacion_incompleta": true o false.
+                8. "que_falta": Explicación si se requiere otra foto adicional más cercana o de otro lateral.
             """.trimIndent()
 
             val requestBody = JSONObject().apply {
@@ -244,6 +264,13 @@ class GeminiClient(
             val safetyStr = extraJson.optString("nivel_seguridad", existingProduct.safetyLevel.name)
             val newSafety = runCatching { ProductSafetyLevel.valueOf(safetyStr.uppercase()) }.getOrDefault(existingProduct.safetyLevel)
 
+            val isStillIncomplete = extraJson.optBoolean("informacion_incompleta", false)
+            val whatIsMissing = if (isStillIncomplete) {
+                extraJson.optString("que_falta", "Se sugiere tomar otra foto con mayor acercamiento al lateral donde se aprecian los ingredientes.")
+            } else if (newIngredients.isBlank() && existingProduct.category in listOf(ProductCategory.WIPES_HYGIENE, ProductCategory.HEALTH, ProductCategory.FEEDING)) {
+                "Aún no se detectaron los ingredientes en inglés o español. Toma otra foto más de cerca de la lista 'INGREDIENTS:'."
+            } else ""
+
             val mergedProduct = existingProduct.copy(
                 ingredients = newIngredients,
                 expirationDate = newExpiration,
@@ -251,7 +278,7 @@ class GeminiClient(
                 manufacturedIn = newOrigin,
                 risksAndWarnings = newRisks,
                 safetyLevel = newSafety,
-                missingInfoPrompt = "" // Datos complementados exitosamente
+                missingInfoPrompt = whatIsMissing
             )
 
             Result.success(mergedProduct)

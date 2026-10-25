@@ -193,8 +193,8 @@ class GoogleSheetsService {
             put("barcode", product.barcode)
             put("countryVariant", product.countryVariant)
             put("usefulUntilAge", product.usefulUntilAge)
-            // Guardar miniatura si cabe holgadamente en la celda de Google Sheets (< 38,000 chars)
-            if (product.photoBase64.length < 38000) {
+            // Guardar miniatura ultraligera (< 6,000 chars) para sincronización instantánea por red móvil
+            if (product.photoBase64.isNotBlank() && product.photoBase64.length < 6000) {
                 put("photoBase64", product.photoBase64)
             }
         }

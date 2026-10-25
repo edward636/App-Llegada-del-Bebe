@@ -34,7 +34,7 @@ import com.example.llegadadelbebe.presentation.settings.SettingsScreen
 import kotlinx.coroutines.launch
 
 const val APP_VERSION_CODE = 11
-const val APP_VERSION_NAME = "1.1.0"
+const val APP_VERSION_NAME = "1.1.1"
 
 @Composable
 fun MainNavigation() {

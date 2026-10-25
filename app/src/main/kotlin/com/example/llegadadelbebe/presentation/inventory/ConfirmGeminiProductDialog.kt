@@ -68,7 +68,7 @@ import kotlinx.coroutines.launch
 fun ConfirmGeminiProductDialog(
     initialProduct: BabyProduct,
     onDismiss: () -> Unit,
-    onScanBackPhoto: (() -> Unit)? = null,
+    onScanBackPhoto: ((BabyProduct) -> Unit)? = null,
     onScanBarcode: (() -> Unit)? = null,
     onConfirm: (BabyProduct) -> Unit
 ) {
@@ -135,6 +135,32 @@ fun ConfirmGeminiProductDialog(
         ProductCategory.DIAPERS -> listOf("RN", "P", "M", "G", "XG", "XXG")
         ProductCategory.CLOTHING -> listOf("RN", "0-3M", "3-6M", "6-9M", "9-12M")
         else -> emptyList()
+    }
+
+    val buildCurrentSnapshot: () -> BabyProduct = {
+        initialProduct.copy(
+            name = name.trim(),
+            brand = brand.trim(),
+            model = model.trim(),
+            category = category,
+            stageSize = stageSize.trim(),
+            packageCount = packageCount.coerceAtLeast(1),
+            unitsPerPackage = unitsPerPackage.coerceAtLeast(1),
+            quantityCurrent = totalCalculatedUnits,
+            status = status,
+            ingredients = ingredients.trim(),
+            risksAndWarnings = risksAndWarnings.trim(),
+            safetyLevel = safetyLevel,
+            manufacturedIn = manufacturedIn.trim(),
+            expirationDate = expirationDate.trim(),
+            photoBase64 = currentPhotoBase64,
+            rawPhotoBase64 = rawCameraPhotoBase64,
+            barcode = barcode.trim(),
+            countryVariant = countryVariant.trim(),
+            usefulUntilAge = usefulUntilAge.trim(),
+            geminiOpinion = geminiOpinion.trim(),
+            registeredBy = registeredBy
+        )
     }
 
     Dialog(
@@ -381,7 +407,7 @@ fun ConfirmGeminiProductDialog(
                             )
                             if (onScanBackPhoto != null) {
                                 Button(
-                                    onClick = onScanBackPhoto,
+                                    onClick = { onScanBackPhoto.invoke(buildCurrentSnapshot()) },
                                     shape = RoundedCornerShape(10.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF57F17))
                                 ) {
@@ -559,10 +585,35 @@ fun ConfirmGeminiProductDialog(
                 }
 
                 // 9. Ingredientes / Materiales
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Ingredientes / Composición (INCI)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                    if (onScanBackPhoto != null) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                            modifier = Modifier.clickable {
+                                onScanBackPhoto.invoke(buildCurrentSnapshot())
+                            }
+                        ) {
+                            Text(
+                                text = "📷 Tomar otra foto del envase",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = ingredients,
                     onValueChange = { ingredients = it },
-                    label = { Text("Ingredientes / Composición Textil") },
+                    label = { Text("Lista de Ingredientes (INCI en inglés o español)") },
+                    placeholder = { Text("Ej: Aqua, Glycerin, Sodium Palmate, Coco-Glucoside...") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     minLines = 2

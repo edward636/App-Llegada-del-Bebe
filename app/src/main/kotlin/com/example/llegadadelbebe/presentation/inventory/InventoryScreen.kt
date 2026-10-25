@@ -44,15 +44,18 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -108,6 +111,9 @@ fun InventoryScreen(
     var isScanningBackPhoto by remember { mutableStateOf(false) }
     var isScanningBarcodeOnly by remember { mutableStateOf(false) }
     var pendingProductMissingInfo by remember { mutableStateOf<BabyProduct?>(null) }
+    var multiPhotoAttemptCount by remember { mutableIntStateOf(1) }
+    var syncFeedbackMessage by remember { mutableStateOf<String?>(null) }
+    var syncFeedbackIsError by remember { mutableStateOf(false) }
 
     // Lanzador de Cámara HD (1280px para OCR de Gemini + miniatura 300px para el mosaico + escáner de código de barra)
     val highResCameraLauncher = rememberLauncherForActivityResult(
@@ -146,7 +152,7 @@ fun InventoryScreen(
                             cameraErrorMessage = "No se detectó código de barras en la imagen. Intenta enfocar más de cerca."
                         }
                     } else {
-                        val current = geminiProductToConfirm
+                        val current = pendingProductMissingInfo ?: geminiProductToConfirm
                         if (isScanningBackPhoto && current != null) {
                             isScanningBackPhoto = false
                             viewModel.complementProductDetailsWithPhoto(
@@ -155,10 +161,22 @@ fun InventoryScreen(
                                 detectedBarcode = barcode,
                                 apiKey = geminiApiKey
                             ) { updated ->
-                                geminiProductToConfirm = updated
+                                multiPhotoAttemptCount++
+                                val stillNeedsMore = updated.missingInfoPrompt.isNotBlank() ||
+                                    (updated.category in listOf(ProductCategory.WIPES_HYGIENE, ProductCategory.HEALTH, ProductCategory.FEEDING) && updated.ingredients.isBlank() && multiPhotoAttemptCount < 6)
+                                if (stillNeedsMore) {
+                                    pendingProductMissingInfo = updated
+                                    geminiProductToConfirm = null
+                                    cameraErrorMessage = "Foto $multiPhotoAttemptCount analizada: Aún no se detectaron todos los ingredientes o datos. Toma otra toma de cerca de la sección 'INGREDIENTS:'."
+                                } else {
+                                    pendingProductMissingInfo = null
+                                    geminiProductToConfirm = updated
+                                    cameraErrorMessage = "✅ ¡Foto $multiPhotoAttemptCount exitosa! Datos e ingredientes extraídos correctamente."
+                                }
                             }
                         } else {
                             isScanningBackPhoto = false
+                            multiPhotoAttemptCount = 1
                             viewModel.analyzePhoto(
                                 base64Image = highRes,
                                 thumbnailBase64 = thumb,
@@ -170,7 +188,9 @@ fun InventoryScreen(
                                         (extracted.category in listOf(ProductCategory.WIPES_HYGIENE, ProductCategory.HEALTH, ProductCategory.FEEDING) && extracted.ingredients.isBlank())
                                     if (needsBackPhoto) {
                                         pendingProductMissingInfo = extracted
+                                        geminiProductToConfirm = null
                                     } else {
+                                        pendingProductMissingInfo = null
                                         geminiProductToConfirm = extracted
                                     }
                                 } else {
@@ -223,7 +243,7 @@ fun InventoryScreen(
                         }
                     }.getOrNull()
 
-                    val current = geminiProductToConfirm
+                    val current = pendingProductMissingInfo ?: geminiProductToConfirm
                     if (isScanningBackPhoto && current != null) {
                         isScanningBackPhoto = false
                         viewModel.complementProductDetailsWithPhoto(
@@ -232,10 +252,22 @@ fun InventoryScreen(
                             detectedBarcode = barcode,
                             apiKey = geminiApiKey
                         ) { updated ->
-                            geminiProductToConfirm = updated
+                            multiPhotoAttemptCount++
+                            val stillNeedsMore = updated.missingInfoPrompt.isNotBlank() ||
+                                (updated.category in listOf(ProductCategory.WIPES_HYGIENE, ProductCategory.HEALTH, ProductCategory.FEEDING) && updated.ingredients.isBlank() && multiPhotoAttemptCount < 6)
+                            if (stillNeedsMore) {
+                                pendingProductMissingInfo = updated
+                                geminiProductToConfirm = null
+                                cameraErrorMessage = "Foto $multiPhotoAttemptCount analizada: Aún no se detectaron todos los ingredientes o datos. Toma otra foto de cerca de la sección 'INGREDIENTS:'."
+                            } else {
+                                pendingProductMissingInfo = null
+                                geminiProductToConfirm = updated
+                                cameraErrorMessage = "✅ ¡Foto $multiPhotoAttemptCount analizada con éxito!"
+                            }
                         }
                     } else {
                         isScanningBackPhoto = false
+                        multiPhotoAttemptCount = 1
                         viewModel.analyzePhoto(
                             base64Image = highRes,
                             thumbnailBase64 = thumb,
@@ -247,7 +279,9 @@ fun InventoryScreen(
                                     (extracted.category in listOf(ProductCategory.WIPES_HYGIENE, ProductCategory.HEALTH, ProductCategory.FEEDING) && extracted.ingredients.isBlank())
                                 if (needsBackPhoto) {
                                     pendingProductMissingInfo = extracted
+                                    geminiProductToConfirm = null
                                 } else {
+                                    pendingProductMissingInfo = null
                                     geminiProductToConfirm = extracted
                                 }
                             } else {
@@ -351,6 +385,34 @@ fun InventoryScreen(
                 color = MaterialTheme.colorScheme.primary
             )
 
+            // Banner de retroalimentación de sincronización inmediata con Google Sheets
+            if (!syncFeedbackMessage.isNullOrBlank()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (syncFeedbackIsError) MaterialTheme.colorScheme.errorContainer else Color(0xFFE8F5E9),
+                    border = BorderStroke(1.dp, if (syncFeedbackIsError) MaterialTheme.colorScheme.error else Color(0xFF4CAF50)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = syncFeedbackMessage ?: "",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = if (syncFeedbackIsError) MaterialTheme.colorScheme.onErrorContainer else Color(0xFF1B5E20),
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = { syncFeedbackMessage = null }, modifier = Modifier.size(24.dp)) {
+                            Text("✕", fontSize = 12.sp, color = Color.Gray)
+                        }
+                    }
+                }
+            }
+
             if (cameraErrorMessage.isNotBlank()) {
                 Spacer(modifier = Modifier.height(6.dp))
                 Surface(
@@ -416,7 +478,19 @@ fun InventoryScreen(
                     ProductMosaicTile(
                         product = product,
                         onClick = { selectedProductForDetail = product },
-                        onStatusToggle = { viewModel.toggleProductStatus(product, googleSheetUrl) }
+                        onStatusToggle = {
+                            syncFeedbackMessage = "⏳ Sincronizando estado de '${product.name}' en la base de datos..."
+                            syncFeedbackIsError = false
+                            viewModel.toggleProductStatus(product, googleSheetUrl) { isSuccess ->
+                                if (isSuccess) {
+                                    syncFeedbackMessage = "✅ Estado de '${product.name}' sincronizado en Google Sheets"
+                                    syncFeedbackIsError = false
+                                } else {
+                                    syncFeedbackMessage = "💾 Estado de '${product.name}' actualizado en memoria local"
+                                    syncFeedbackIsError = false
+                                }
+                            }
+                        }
                     )
                 }
             }
@@ -479,7 +553,7 @@ fun InventoryScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "Para garantizar máxima exactitud médica y no suponer ingredientes ni vencimiento, Gemini necesita una foto de la parte posterior o empaque del producto.",
+                        text = "Foto $multiPhotoAttemptCount analizada. Para garantizar máxima exactitud médica y no suponer ingredientes ni vencimiento, Gemini necesita una foto de la parte posterior, lateral o lista de ingredientes del producto.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -491,7 +565,7 @@ fun InventoryScreen(
                     ) {
                         Text(
                             text = missingProduct.missingInfoPrompt.ifBlank {
-                                "Fotografía el reverso o lateral donde se aprecie la lista de ingredientes (INCI) o fecha de vencimiento."
+                                "Fotografía el reverso o lateral donde se aprecie la lista de ingredientes (en inglés INCI o español) o fecha de vencimiento."
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = Color(0xFFE65100),
@@ -499,10 +573,24 @@ fun InventoryScreen(
                             fontWeight = FontWeight.Medium
                         )
                     }
+
+                    // Tip especial para jabones y cosméticos con ingredientes en inglés
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFE3F2FD)),
+                        border = BorderStroke(1.dp, Color(0xFF90CAF9))
+                    ) {
+                        Text(
+                            text = "💡 En jabones, champús y lociones los ingredientes suelen estar en inglés o norma INCI (ej: 'INGREDIENTS: Aqua, Glycerin, Sodium Palmate...'). Enfoca de cerca con buena luz sobre ese bloque de texto.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF0D47A1),
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
+
                     Button(
                         onClick = {
-                            geminiProductToConfirm = missingProduct
-                            pendingProductMissingInfo = null
                             isScanningBackPhoto = true
                             launchCameraWithUri()
                         },
@@ -510,17 +598,29 @@ fun InventoryScreen(
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF57F17))
                     ) {
-                        Text("📷 Tomar Foto del Reverso Ahora", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("📷 Tomar Foto ${multiPhotoAttemptCount + 1} (Reverso / Lateral / Zoom)", color = Color.White, fontWeight = FontWeight.Bold)
                     }
+
                     OutlinedButton(
                         onClick = {
-                            geminiProductToConfirm = missingProduct
-                            pendingProductMissingInfo = null
+                            isScanningBackPhoto = true
+                            galleryLauncher.launch("image/*")
                         },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Continuar solo con foto frontal")
+                        Text("🖼️ Elegir Foto ${multiPhotoAttemptCount + 1} de la Galería")
+                    }
+
+                    TextButton(
+                        onClick = {
+                            geminiProductToConfirm = missingProduct
+                            pendingProductMissingInfo = null
+                            isScanningBackPhoto = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Continuar y revisar ficha con datos actuales")
                     }
                 }
             }
@@ -535,7 +635,9 @@ fun InventoryScreen(
                 geminiProductToConfirm = null
                 isScanningBackPhoto = false
             },
-            onScanBackPhoto = {
+            onScanBackPhoto = { currentSnapshot ->
+                geminiProductToConfirm = currentSnapshot
+                pendingProductMissingInfo = currentSnapshot
                 isScanningBackPhoto = true
                 launchCameraWithUri()
             },
@@ -552,8 +654,19 @@ fun InventoryScreen(
                 }
             },
             onConfirm = { confirmed ->
-                viewModel.addProduct(confirmed, googleSheetUrl)
+                syncFeedbackMessage = "⏳ Guardando '${confirmed.name}' y sincronizando con Google Sheets..."
+                syncFeedbackIsError = false
+                viewModel.addProduct(confirmed, googleSheetUrl) { isSuccess ->
+                    if (isSuccess) {
+                        syncFeedbackMessage = "✅ ¡'${confirmed.name}' guardado y sincronizado con éxito en Google Sheets!"
+                        syncFeedbackIsError = false
+                    } else {
+                        syncFeedbackMessage = "💾 ¡'${confirmed.name}' guardado en memoria local! (Se sincronizará al conectar)"
+                        syncFeedbackIsError = false
+                    }
+                }
                 geminiProductToConfirm = null
+                pendingProductMissingInfo = null
                 isScanningBackPhoto = false
             }
         )
@@ -565,11 +678,25 @@ fun InventoryScreen(
             product = product,
             onDismiss = { selectedProductForDetail = null },
             onUpdateProduct = { updated ->
-                viewModel.updateProduct(updated, googleSheetUrl)
+                syncFeedbackMessage = "⏳ Sincronizando actualización de '${updated.name}' en Google Sheets..."
+                syncFeedbackIsError = false
+                viewModel.updateProduct(updated, googleSheetUrl) { isSuccess ->
+                    if (isSuccess) {
+                        syncFeedbackMessage = "✅ ¡'${updated.name}' actualizado y sincronizado en Google Sheets!"
+                        syncFeedbackIsError = false
+                    } else {
+                        syncFeedbackMessage = "💾 ¡'${updated.name}' actualizado localmente!"
+                        syncFeedbackIsError = false
+                    }
+                }
                 selectedProductForDetail = null
             },
             onDeleteProduct = { productId ->
+                val pName = product.name
+                syncFeedbackMessage = "⏳ Eliminando '$pName' en la base de datos..."
+                syncFeedbackIsError = false
                 viewModel.deleteProduct(productId, googleSheetUrl)
+                syncFeedbackMessage = "🗑️ '$pName' eliminado de la base de datos."
                 selectedProductForDetail = null
             }
         )
@@ -593,7 +720,17 @@ fun InventoryScreen(
                 }
             },
             onSave = { newProduct ->
-                viewModel.addProduct(newProduct, googleSheetUrl)
+                syncFeedbackMessage = "⏳ Guardando '${newProduct.name}' y sincronizando con Google Sheets..."
+                syncFeedbackIsError = false
+                viewModel.addProduct(newProduct, googleSheetUrl) { isSuccess ->
+                    if (isSuccess) {
+                        syncFeedbackMessage = "✅ ¡'${newProduct.name}' sincronizado con éxito en Google Sheets!"
+                        syncFeedbackIsError = false
+                    } else {
+                        syncFeedbackMessage = "💾 ¡'${newProduct.name}' guardado localmente!"
+                        syncFeedbackIsError = false
+                    }
+                }
                 showAddDialog = false
             }
         )

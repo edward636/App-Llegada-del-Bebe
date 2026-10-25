@@ -53,7 +53,7 @@ class BabyInventoryRepository(
     /**
      * Guarda o actualiza un producto en memoria, en caché local y dispara sincronización automática a Google Sheets.
      */
-    fun saveProduct(product: BabyProduct, googleSheetUrl: String? = null) {
+    fun saveProduct(product: BabyProduct, googleSheetUrl: String? = null, onSyncComplete: ((Boolean) -> Unit)? = null) {
         val targetUrl = googleSheetUrl?.ifBlank { activeGoogleSheetUrl } ?: activeGoogleSheetUrl
         val currentList = _products.value.toMutableList()
         val index = currentList.indexOfFirst { it.id == product.id }
@@ -69,8 +69,12 @@ class BabyInventoryRepository(
             scope.launch {
                 _syncStatus.value = CloudSyncStatus.SYNCING
                 val result = sheetsService.saveProduct(targetUrl, product)
-                _syncStatus.value = if (result.isSuccess) CloudSyncStatus.ONLINE else CloudSyncStatus.OFFLINE
+                val isSuccess = result.isSuccess && (result.getOrNull() == true)
+                _syncStatus.value = if (isSuccess) CloudSyncStatus.ONLINE else CloudSyncStatus.OFFLINE
+                onSyncComplete?.invoke(isSuccess)
             }
+        } else {
+            onSyncComplete?.invoke(false)
         }
     }
 
@@ -107,8 +111,18 @@ class BabyInventoryRepository(
             _syncStatus.value = CloudSyncStatus.ONLINE
             val remoteItems = result.getOrNull() ?: emptyList()
             if (remoteItems.isNotEmpty()) {
-                _products.value = remoteItems
-                localPreferences?.saveInventoryCache(remoteItems)
+                val currentLocalMap = _products.value.associateBy { it.id }
+                val merged = remoteItems.map { remote ->
+                    val local = currentLocalMap[remote.id]
+                    if (remote.photoBase64.isBlank() && local != null && local.photoBase64.isNotBlank()) {
+                        remote.copy(
+                            photoBase64 = local.photoBase64,
+                            rawPhotoBase64 = local.rawPhotoBase64
+                        )
+                    } else remote
+                }
+                _products.value = merged
+                localPreferences?.saveInventoryCache(merged)
             }
             Result.success(Unit)
         } else {

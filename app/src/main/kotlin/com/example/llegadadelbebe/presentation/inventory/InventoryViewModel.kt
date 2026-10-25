@@ -75,22 +75,22 @@ class InventoryViewModel(
         _activeUser.value = if (_activeUser.value.contains("Papá")) "Mamá (Britney)" else "Papá (Edward)"
     }
 
-    fun addProduct(product: BabyProduct, googleSheetUrl: String?) {
-        repository.saveProduct(product.copy(registeredBy = _activeUser.value), googleSheetUrl)
+    fun addProduct(product: BabyProduct, googleSheetUrl: String?, onSyncComplete: ((Boolean) -> Unit)? = null) {
+        repository.saveProduct(product.copy(registeredBy = _activeUser.value), googleSheetUrl, onSyncComplete)
     }
 
-    fun updateProduct(product: BabyProduct, googleSheetUrl: String?) {
-        repository.saveProduct(product.copy(updatedAt = System.currentTimeMillis()), googleSheetUrl)
+    fun updateProduct(product: BabyProduct, googleSheetUrl: String?, onSyncComplete: ((Boolean) -> Unit)? = null) {
+        repository.saveProduct(product.copy(updatedAt = System.currentTimeMillis()), googleSheetUrl, onSyncComplete)
     }
 
-    fun toggleProductStatus(product: BabyProduct, googleSheetUrl: String?) {
+    fun toggleProductStatus(product: BabyProduct, googleSheetUrl: String?, onSyncComplete: ((Boolean) -> Unit)? = null) {
         val nextStatus = when (product.status) {
             ProductStatus.PENDING -> ProductStatus.PURCHASED
             ProductStatus.PURCHASED -> ProductStatus.HOSPITAL_PACKED
-            ProductStatus.HOSPITAL_PACKED -> ProductStatus.PURCHASED
-            ProductStatus.GIFTED -> ProductStatus.HOSPITAL_PACKED
+            ProductStatus.HOSPITAL_PACKED -> ProductStatus.GIFTED
+            ProductStatus.GIFTED -> ProductStatus.PENDING
         }
-        repository.saveProduct(product.copy(status = nextStatus, updatedAt = System.currentTimeMillis()), googleSheetUrl)
+        repository.saveProduct(product.copy(status = nextStatus, updatedAt = System.currentTimeMillis()), googleSheetUrl, onSyncComplete)
     }
 
     fun deleteProduct(productId: String, googleSheetUrl: String? = null) {
