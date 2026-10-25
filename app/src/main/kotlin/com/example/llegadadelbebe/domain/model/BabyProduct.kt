@@ -68,23 +68,36 @@ data class BabyProduct(
     val updatedAt: Long = System.currentTimeMillis()
 ) {
     /**
-     * Calcula las unidades totales reales para control estricto de inventario.
+     * Resuelve cuántas unidades vienen contenidas en 1 paquete.
+     * Si unitsPerPackage fue registrado como 1 pero quantityCurrent es mayor (ej: paquete de 20 pañales),
+     * deduce fidedignamente las unidades del paquete.
      */
-    val effectiveTotalUnits: Int
+    val effectiveUnitsPerPackage: Int
         get() = when {
-            unitsPerPackage > 1 || packageCount > 1 -> (packageCount.coerceAtLeast(1) * unitsPerPackage.coerceAtLeast(1))
-            quantityCurrent > 1 -> quantityCurrent
+            unitsPerPackage > 1 -> unitsPerPackage
+            packageCount <= 1 && quantityCurrent > 1 -> quantityCurrent
+            packageCount > 1 && quantityCurrent > packageCount && quantityCurrent % packageCount == 0 -> quantityCurrent / packageCount
             else -> 1
         }
 
     /**
-     * Etiqueta amigable de presentación (ej: "1 pqte de 24 uds" o "24 unidades" o "1 unidad").
+     * Calcula las unidades totales reales: paquetes poseídos * unidades por paquete.
+     */
+    val effectiveTotalUnits: Int
+        get() = packageCount.coerceAtLeast(1) * effectiveUnitsPerPackage
+
+    /**
+     * Etiqueta amigable de presentación (ej: "1 pqte de 24 uds", "2 pqtes × 24 uds (48 total)" o "1 unidad").
      */
     val displayQuantityLabel: String
         get() = when {
-            unitsPerPackage > 1 && packageCount > 1 -> "$packageCount pqtes × $unitsPerPackage uds (${effectiveTotalUnits} total)"
-            unitsPerPackage > 1 && packageCount == 1 -> "1 pqte de $unitsPerPackage uds"
-            effectiveTotalUnits > 1 -> "$effectiveTotalUnits unidades"
-            else -> "1 unidad"
+            effectiveUnitsPerPackage > 1 && packageCount > 1 ->
+                "$packageCount pqtes × $effectiveUnitsPerPackage uds (${effectiveTotalUnits} total)"
+            effectiveUnitsPerPackage > 1 && packageCount == 1 ->
+                "1 pqte de $effectiveUnitsPerPackage uds"
+            packageCount > 1 ->
+                "$packageCount unidades"
+            else ->
+                "1 unidad"
         }
 }

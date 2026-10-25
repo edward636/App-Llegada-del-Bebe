@@ -28,11 +28,15 @@ import com.example.llegadadelbebe.domain.model.StockStatus
 class EvaluateConsumablesUseCase {
 
     fun execute(products: List<BabyProduct>, geminiCustomAdvice: String = ""): ConsumablesAuditSummary {
-        // Filtro de pañales
-        val diaperProducts = products.filter { it.category == ProductCategory.DIAPERS }
+        // Filtro de pañales que ya poseemos (excluyendo pendientes por comprar)
+        val diaperProducts = products.filter { it.category == ProductCategory.DIAPERS && it.status != ProductStatus.PENDING }
 
         // 1. Pañales Talla RN (Recién Nacido / hasta 4.5 kg)
-        val diapersRnItems = diaperProducts.filter { it.stageSize.contains("RN", ignoreCase = true) }
+        val diapersRnItems = diaperProducts.filter {
+            it.stageSize.contains("RN", ignoreCase = true) ||
+            it.name.contains("RN", ignoreCase = true) ||
+            it.name.contains("Recién Nacido", ignoreCase = true)
+        }
         val diapersRnCount = diapersRnItems.sumOf { it.effectiveTotalUnits }
         val diapersRnPacks = diapersRnItems.sumOf { it.packageCount.coerceAtLeast(1) }
 
@@ -65,8 +69,15 @@ class EvaluateConsumablesUseCase {
 
         // 2. Pañales Talla P (Pequeño / 4 a 6 kg / Etapa 1)
         val diapersPItems = diaperProducts.filter {
-            it.stageSize.contains("P", ignoreCase = true) || it.stageSize.contains("1") || it.stageSize.contains("pequeñ", ignoreCase = true)
-        }.filterNot { it.stageSize.contains("RN", ignoreCase = true) }
+            (it.stageSize.contains("P", ignoreCase = true) ||
+             it.stageSize.contains("1") ||
+             it.stageSize.contains("pequeñ", ignoreCase = true) ||
+             it.name.contains("Talla P", ignoreCase = true) ||
+             it.name.contains("Etapa 1", ignoreCase = true)) &&
+            !it.stageSize.contains("RN", ignoreCase = true) &&
+            !it.name.contains("RN", ignoreCase = true) &&
+            !it.name.contains("Recién Nacido", ignoreCase = true)
+        }
         val diapersPCount = diapersPItems.sumOf { it.effectiveTotalUnits }
         val diapersPPacks = diapersPItems.sumOf { it.packageCount.coerceAtLeast(1) }
 
@@ -92,8 +103,16 @@ class EvaluateConsumablesUseCase {
 
         // 3. Pañales Talla M (Mediano / 6 a 9.5 kg / Etapa 2)
         val diapersMItems = diaperProducts.filter {
-            it.stageSize.contains("M", ignoreCase = true) || it.stageSize.contains("2") || it.stageSize.contains("median", ignoreCase = true)
-        }.filterNot { it.stageSize.contains("0-3", ignoreCase = true) || it.stageSize.contains("3-6", ignoreCase = true) }
+            (it.stageSize.contains("M", ignoreCase = true) ||
+             it.stageSize.contains("2") ||
+             it.stageSize.contains("median", ignoreCase = true) ||
+             it.name.contains("Talla M", ignoreCase = true) ||
+             it.name.contains("Etapa 2", ignoreCase = true)) &&
+            !it.stageSize.contains("0-3", ignoreCase = true) &&
+            !it.stageSize.contains("3-6", ignoreCase = true) &&
+            !it.stageSize.contains("RN", ignoreCase = true) &&
+            !it.name.contains("RN", ignoreCase = true)
+        }
         val diapersMCount = diapersMItems.sumOf { it.effectiveTotalUnits }
         val diapersMPacks = diapersMItems.sumOf { it.packageCount.coerceAtLeast(1) }
 
@@ -119,8 +138,13 @@ class EvaluateConsumablesUseCase {
 
         // 4. Pañales Talla G (Grande / 9 a 12.5 kg / Etapa 3)
         val diapersGItems = diaperProducts.filter {
-            it.stageSize.contains("G", ignoreCase = true) || it.stageSize.contains("3") || it.stageSize.contains("grand", ignoreCase = true)
-        }.filterNot { it.stageSize.contains("XG", ignoreCase = true) }
+            (it.stageSize.contains("G", ignoreCase = true) ||
+             it.stageSize.contains("3") ||
+             it.stageSize.contains("grand", ignoreCase = true) ||
+             it.name.contains("Talla G", ignoreCase = true) ||
+             it.name.contains("Etapa 3", ignoreCase = true)) &&
+            !it.stageSize.contains("XG", ignoreCase = true)
+        }
         val diapersGCount = diapersGItems.sumOf { it.effectiveTotalUnits }
         val diapersGPacks = diapersGItems.sumOf { it.packageCount.coerceAtLeast(1) }
 
@@ -136,6 +160,7 @@ class EvaluateConsumablesUseCase {
         // 5. Toallitas húmedas
         val wipesItems = products.filter {
             it.category == ProductCategory.WIPES_HYGIENE &&
+            it.status != ProductStatus.PENDING &&
             (it.name.contains("toall", ignoreCase = true) || it.name.contains("wipes", ignoreCase = true))
         }
         val wipesPacks = wipesItems.sumOf { it.packageCount.coerceAtLeast(1) }
@@ -164,9 +189,10 @@ class EvaluateConsumablesUseCase {
         // 6. Champús / Jabones / Baño
         val soapsItems = products.filter {
             it.category == ProductCategory.WIPES_HYGIENE &&
-            (it.name.contains("jab", ignoreCase = true) || it.name.contains("shamp", ignoreCase = true) || it.name.contains("chamb", ignoreCase = true) || it.name.contains("baño", ignoreCase = true))
+            it.status != ProductStatus.PENDING &&
+            (it.name.contains("jab", ignoreCase = true) || it.name.contains("shamp", ignoreCase = true) || it.name.contains("chamb", ignoreCase = true) || it.name.contains("baño", ignoreCase = true) || it.name.contains("soap", ignoreCase = true))
         }
-        val soapsCount = soapsItems.sumOf { it.effectiveTotalUnits }
+        val soapsCount = soapsItems.sumOf { it.packageCount.coerceAtLeast(1) }
 
         val soapsAudit = if (soapsCount >= 1) {
             ConsumableCategoryAudit(

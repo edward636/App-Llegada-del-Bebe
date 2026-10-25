@@ -79,8 +79,15 @@ fun ConfirmGeminiProductDialog(
     var model by remember(initialProduct.id) { mutableStateOf(initialProduct.model) }
     var category by remember(initialProduct.id) { mutableStateOf(initialProduct.category) }
     var stageSize by remember(initialProduct.id) { mutableStateOf(initialProduct.stageSize) }
-    var packageCount by remember(initialProduct.id) { mutableIntStateOf(initialProduct.packageCount) }
-    var unitsPerPackage by remember(initialProduct.id) { mutableIntStateOf(initialProduct.unitsPerPackage) }
+    var packageCount by remember(initialProduct.id) { mutableIntStateOf(initialProduct.packageCount.coerceAtLeast(1)) }
+    var unitsPerPackage by remember(initialProduct.id) {
+        val initialUnits = when {
+            initialProduct.unitsPerPackage > 1 -> initialProduct.unitsPerPackage
+            initialProduct.quantityCurrent > 1 -> initialProduct.quantityCurrent
+            else -> 1
+        }
+        mutableIntStateOf(initialUnits)
+    }
     var status by remember(initialProduct.id) { mutableStateOf(initialProduct.status) }
     var ingredients by remember(initialProduct.id, initialProduct.ingredients) { mutableStateOf(initialProduct.ingredients) }
     var risksAndWarnings by remember(initialProduct.id, initialProduct.risksAndWarnings) { mutableStateOf(initialProduct.risksAndWarnings) }
@@ -760,7 +767,7 @@ fun ConfirmGeminiProductDialog(
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Guardar en Mosaico")
+                        Text("Guardar en Inventario")
                     }
                 }
             }

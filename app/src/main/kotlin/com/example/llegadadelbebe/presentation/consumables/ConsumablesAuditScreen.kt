@@ -83,10 +83,10 @@ fun ConsumablesAuditScreen(
     var selectedSection by remember { mutableIntStateOf(0) }
 
     val ownedProducts = remember(products) {
-        products.filter { it.status != ProductStatus.PENDING && it.quantityCurrent > 0 }
+        products.filter { it.status != ProductStatus.PENDING }
     }
     val missingOrIncompleteProducts = remember(products) {
-        products.filter { it.status == ProductStatus.PENDING || it.quantityCurrent < it.quantityTarget }
+        products.filter { it.status == ProductStatus.PENDING }
     }
 
     Scaffold(
@@ -688,13 +688,9 @@ fun InventoryBalanceProductRow(
             ) {
                 Text(
                     text = if (isMissingView) {
-                        if (product.status == ProductStatus.PENDING) {
-                            "Falta comprar (${product.quantityTarget})"
-                        } else {
-                            "Tenemos ${product.quantityCurrent} • Faltan $missingCount"
-                        }
+                        "Falta adquirir (${product.displayQuantityLabel})"
                     } else {
-                        "Tenemos ${product.quantityCurrent} uds"
+                        "Tenemos: ${product.displayQuantityLabel}"
                     },
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
                     color = accentColor,

@@ -83,6 +83,29 @@ class InventoryViewModel(
         repository.saveProduct(product.copy(updatedAt = System.currentTimeMillis()), googleSheetUrl, onSyncComplete)
     }
 
+    /**
+     * Actualiza el conteo de paquetes de un producto existente y recalcula automáticamente
+     * las unidades totales (paquetes * unidades por paquete) para sincronizarlo inmediatamente.
+     */
+    fun updateProductPackageCount(
+        product: BabyProduct,
+        newPackageCount: Int,
+        googleSheetUrl: String?,
+        onSyncComplete: ((Boolean) -> Unit)? = null
+    ) {
+        val safePacks = newPackageCount.coerceAtLeast(1)
+        val unitsPerPack = product.effectiveUnitsPerPackage
+        val newTotalUnits = safePacks * unitsPerPack
+        val updated = product.copy(
+            packageCount = safePacks,
+            unitsPerPackage = unitsPerPack,
+            quantityCurrent = newTotalUnits,
+            quantityTarget = newTotalUnits,
+            updatedAt = System.currentTimeMillis()
+        )
+        repository.saveProduct(updated, googleSheetUrl, onSyncComplete)
+    }
+
     fun toggleProductStatus(product: BabyProduct, googleSheetUrl: String?, onSyncComplete: ((Boolean) -> Unit)? = null) {
         val nextStatus = when (product.status) {
             ProductStatus.PENDING -> ProductStatus.PURCHASED

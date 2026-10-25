@@ -73,8 +73,8 @@ fun ProductDetailDialog(
     onDeleteProduct: (String) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
-    var quantityCurrent by remember(product.id) { mutableIntStateOf(product.quantityCurrent) }
-    var quantityTarget by remember(product.id) { mutableIntStateOf(product.quantityTarget) }
+    val effectiveUnits = remember(product.id) { product.effectiveUnitsPerPackage }
+    var packageCount by remember(product.id) { mutableIntStateOf(product.packageCount.coerceAtLeast(1)) }
     var status by remember(product.id) { mutableStateOf(product.status) }
     var confirmDelete by remember { mutableStateOf(false) }
 
@@ -453,82 +453,66 @@ fun ProductDetailDialog(
                     }
                 }
 
-                // 6. Control Rápido de Cantidad (Tenemos vs Meta)
-                Row(
+                // 6. Control de Paquetes en Inventario (Suma Rápida y Conteo Exacto)
+                Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
                 ) {
-                    // Cantidad Actual
-                    Surface(
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Column(
-                            modifier = Modifier.padding(10.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
+                        Text(
+                            text = "📦 Cantidad de Paquetes en Inventario",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = if (effectiveUnits > 1) {
+                                "Cada paquete contiene $effectiveUnits unidades"
+                            } else {
+                                "Artículo individual / por unidad"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                            modifier = Modifier.padding(vertical = 4.dp)
                         ) {
-                            Text("Cantidad Actual", style = MaterialTheme.typography.labelSmall)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            Button(
+                                onClick = { if (packageCount > 1) packageCount-- },
+                                enabled = packageCount > 1,
+                                shape = RoundedCornerShape(10.dp)
                             ) {
-                                Button(
-                                    onClick = { if (quantityCurrent > 0) quantityCurrent-- },
-                                    modifier = Modifier.size(32.dp),
-                                    contentPadding = PaddingValues(0.dp),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) { Text("-") }
-                                Text(
-                                    text = quantityCurrent.toString(),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp
-                                )
-                                Button(
-                                    onClick = { quantityCurrent++ },
-                                    modifier = Modifier.size(32.dp),
-                                    contentPadding = PaddingValues(0.dp),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) { Text("+") }
+                                Text("-", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                            }
+                            Text(
+                                text = "$packageCount paquete${if (packageCount > 1) "s" else ""}",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Button(
+                                onClick = { packageCount++ },
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text("+", fontSize = 20.sp, fontWeight = FontWeight.Bold)
                             }
                         }
-                    }
-
-                    // Cantidad Meta
-                    Surface(
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(10.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text("Meta Ideal", style = MaterialTheme.typography.labelSmall)
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Button(
-                                    onClick = { if (quantityTarget > 1) quantityTarget-- },
-                                    modifier = Modifier.size(32.dp),
-                                    contentPadding = PaddingValues(0.dp),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) { Text("-") }
-                                Text(
-                                    text = quantityTarget.toString(),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp
-                                )
-                                Button(
-                                    onClick = { quantityTarget++ },
-                                    modifier = Modifier.size(32.dp),
-                                    contentPadding = PaddingValues(0.dp),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) { Text("+") }
-                            }
+                        if (effectiveUnits > 1) {
+                            val calculatedUnits = packageCount * effectiveUnits
+                            Text(
+                                text = "Total en inventario: $packageCount paquete(s) × $effectiveUnits uds = $calculatedUnits unidades",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         }
                     }
                 }
@@ -576,12 +560,16 @@ fun ProductDetailDialog(
 
                     Button(
                         onClick = {
+                            val totalUnits = packageCount * effectiveUnits
                             onUpdateProduct(
                                 product.copy(
-                                    quantityCurrent = quantityCurrent,
-                                    quantityTarget = quantityTarget,
+                                    packageCount = packageCount,
+                                    unitsPerPackage = effectiveUnits,
+                                    quantityCurrent = totalUnits,
+                                    quantityTarget = totalUnits,
                                     status = status,
-                                    photoBase64 = currentPhotoBase64
+                                    photoBase64 = currentPhotoBase64,
+                                    updatedAt = System.currentTimeMillis()
                                 )
                             )
                         },

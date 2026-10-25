@@ -276,7 +276,7 @@ fun InventorySummaryCard(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Text("🖼️ Mosaico", softWrap = false, maxLines = 1)
+                    Text("📋 Inventario", softWrap = false, maxLines = 1)
                 }
                 Button(
                     onClick = onAuditClick,

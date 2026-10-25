@@ -298,7 +298,7 @@ fun InventoryScreen(
         modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
         topBar = {
             TopAppBar(
-                title = { Text("Mosaico de Inventario 📋", fontWeight = FontWeight.Bold) },
+                title = { Text("Inventario 📋", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     Button(onClick = onBack, modifier = Modifier.padding(start = 8.dp), shape = RoundedCornerShape(12.dp)) {
                         Text("←", fontSize = 16.sp)
@@ -466,7 +466,7 @@ fun InventoryScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Mosaico de Productos (2 Columnas)
+            // Cuadrícula de Productos (2 Columnas)
             LazyVerticalGrid(
                 columns = GridCells.Fixed(2),
                 modifier = Modifier.fillMaxSize(),
@@ -487,6 +487,20 @@ fun InventoryScreen(
                                     syncFeedbackIsError = false
                                 } else {
                                     syncFeedbackMessage = "💾 Estado de '${product.name}' actualizado en memoria local"
+                                    syncFeedbackIsError = false
+                                }
+                            }
+                        },
+                        onPackageCountChange = { newCount ->
+                            val units = newCount * product.effectiveUnitsPerPackage
+                            syncFeedbackMessage = "⏳ Actualizando paquetes de '${product.name}' a $newCount ($units uds)..."
+                            syncFeedbackIsError = false
+                            viewModel.updateProductPackageCount(product, newCount, googleSheetUrl) { isSuccess ->
+                                if (isSuccess) {
+                                    syncFeedbackMessage = "✅ '${product.name}': $newCount paquete(s) ($units unidades) sincronizados en Google Sheets"
+                                    syncFeedbackIsError = false
+                                } else {
+                                    syncFeedbackMessage = "💾 '${product.name}': $newCount paquete(s) guardados localmente"
                                     syncFeedbackIsError = false
                                 }
                             }
@@ -745,7 +759,8 @@ fun InventoryScreen(
 fun ProductMosaicTile(
     product: BabyProduct,
     onClick: () -> Unit,
-    onStatusToggle: () -> Unit
+    onStatusToggle: () -> Unit,
+    onPackageCountChange: (Int) -> Unit = {}
 ) {
     val thumbBitmap = remember(product.photoBase64) {
         decodeBase64ToBitmap(product.photoBase64)
@@ -937,6 +952,77 @@ fun ProductMosaicTile(
                             softWrap = false,
                             maxLines = 1
                         )
+                    }
+                }
+
+                // Control Rápido de Paquetes en Inventario: Stepper (-) y (+)
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (product.effectiveUnitsPerPackage > 1) {
+                                "${product.packageCount} pqte(s) (${product.effectiveTotalUnits} uds)"
+                            } else {
+                                "${product.packageCount} unidad(es)"
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clickable(enabled = product.packageCount > 1) {
+                                        onPackageCountChange(product.packageCount - 1)
+                                    }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = "-",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (product.packageCount > 1) MaterialTheme.colorScheme.primary else Color.Gray
+                                    )
+                                }
+                            }
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clickable {
+                                        onPackageCountChange(product.packageCount + 1)
+                                    }
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text(
+                                        text = "+",
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color.White
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
 

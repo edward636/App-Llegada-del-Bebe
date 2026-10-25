@@ -253,4 +253,67 @@ class PregnancyAndZodiacTest {
         }
         assertTrue(syncCompleted)
     }
+
+    @Test
+    fun testPackageIncrementRecalculatesTotalUnitsAndLabel() {
+        // Caso real: Britney registró Chicco Etapa 2 con 20 unidades
+        val chiccoInitial = BabyProduct(
+            id = "chicco-1",
+            name = "Pañales Chicco Baby Skin Etapa 2",
+            category = ProductCategory.DIAPERS,
+            stageSize = "Etapa 2 (5,5 - 9,5 Kg)",
+            packageCount = 1,
+            unitsPerPackage = 1,
+            quantityCurrent = 20
+        )
+
+        assertEquals(20, chiccoInitial.effectiveUnitsPerPackage)
+        assertEquals(20, chiccoInitial.effectiveTotalUnits)
+        assertEquals("1 pqte de 20 uds", chiccoInitial.displayQuantityLabel)
+
+        // Cuando Edward o Britney pulsan '+' para agregar otro paquete idéntico
+        val chiccoTwoPacks = chiccoInitial.copy(
+            packageCount = 2,
+            quantityCurrent = 2 * chiccoInitial.effectiveUnitsPerPackage
+        )
+
+        assertEquals(20, chiccoTwoPacks.effectiveUnitsPerPackage)
+        assertEquals(40, chiccoTwoPacks.effectiveTotalUnits)
+        assertEquals("2 pqtes × 20 uds (40 total)", chiccoTwoPacks.displayQuantityLabel)
+    }
+
+    @Test
+    fun testAuditCountsAccuratelyAndExcludesPendingFromStock() {
+        val useCase = EvaluateConsumablesUseCase()
+        val products = listOf(
+            // 1 paquete de 20 pañales Talla M (poseído)
+            BabyProduct(
+                id = "p-m1",
+                name = "Pañales Chicco Baby Skin Etapa 2",
+                category = ProductCategory.DIAPERS,
+                stageSize = "Etapa 2 (5,5 - 9,5 Kg)",
+                packageCount = 1,
+                unitsPerPackage = 20,
+                quantityCurrent = 20,
+                status = ProductStatus.PURCHASED
+            ),
+            // 1 paquete pendiente por comprar de 36 pañales Talla M
+            BabyProduct(
+                id = "p-m2",
+                name = "Pañales Pampers Confort Sec Etapa 2",
+                category = ProductCategory.DIAPERS,
+                stageSize = "M",
+                packageCount = 1,
+                unitsPerPackage = 36,
+                quantityCurrent = 36,
+                status = ProductStatus.PENDING
+            )
+        )
+
+        val summary = useCase.execute(products)
+        // El stock en casa solo debe contabilizar los 20 pañales comprados
+        assertEquals(20, summary.diapersSizeM.currentUnits)
+        assertEquals(1, summary.generalSummary?.sizeM?.packagesCount)
+        assertEquals(20, summary.generalSummary?.sizeM?.unitsCount)
+    }
 }
