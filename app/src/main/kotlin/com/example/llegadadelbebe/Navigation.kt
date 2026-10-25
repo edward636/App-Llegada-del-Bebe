@@ -27,8 +27,8 @@ import com.example.llegadadelbebe.presentation.inventory.InventoryViewModel
 import com.example.llegadadelbebe.presentation.settings.SettingsScreen
 import kotlinx.coroutines.launch
 
-const val APP_VERSION_CODE = 2
-const val APP_VERSION_NAME = "1.0.1"
+const val APP_VERSION_CODE = 3
+const val APP_VERSION_NAME = "1.0.2"
 
 @Composable
 fun MainNavigation() {
@@ -52,7 +52,11 @@ fun MainNavigation() {
 
     // Verificación automática de actualización OTA en segundo plano
     LaunchedEffect(Unit) {
-        val updateResult = OtaUpdateManager.checkForUpdate(currentVersionCode = APP_VERSION_CODE, checkUrl = googleSheetUrlState)
+        val updateResult = OtaUpdateManager.checkForUpdate(
+            currentVersionName = APP_VERSION_NAME,
+            currentVersionCode = APP_VERSION_CODE,
+            checkUrl = googleSheetUrlState
+        )
         if (updateResult.isSuccess) {
             val info = updateResult.getOrNull()
             if (info != null && info.hasUpdate) {

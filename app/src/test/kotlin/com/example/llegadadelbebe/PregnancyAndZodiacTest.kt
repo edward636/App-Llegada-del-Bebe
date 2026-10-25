@@ -1,13 +1,14 @@
 package com.example.llegadadelbebe
 
+import com.example.llegadadelbebe.core.update.OtaUpdateManager
 import com.example.llegadadelbebe.core.util.PregnancyCalculator
 import com.example.llegadadelbebe.core.util.ZodiacPredictor
 import com.example.llegadadelbebe.domain.model.BabyProduct
 import com.example.llegadadelbebe.domain.model.ProductCategory
-import com.example.llegadadelbebe.domain.model.ProductStatus
 import com.example.llegadadelbebe.domain.model.StockStatus
 import com.example.llegadadelbebe.domain.usecase.EvaluateConsumablesUseCase
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
@@ -72,5 +73,22 @@ class PregnancyAndZodiacTest {
 
         val summary = useCase.execute(products)
         assertEquals(StockStatus.DEFICIT, summary.wipes.status)
+    }
+
+    @Test
+    fun testIsNewerVersion_AvoidsInfiniteUpdateLoop() {
+        // Misma versión no debe detonar actualización
+        assertFalse(OtaUpdateManager.isNewerVersion("1.0.1", "1.0.1"))
+        assertFalse(OtaUpdateManager.isNewerVersion("v1.0.1", "1.0.1"))
+        assertFalse(OtaUpdateManager.isNewerVersion("1.0.2", "1.0.2"))
+
+        // Versión menor remota no debe detonar actualización
+        assertFalse(OtaUpdateManager.isNewerVersion("1.0.0", "1.0.1"))
+        assertFalse(OtaUpdateManager.isNewerVersion("v1.0.1", "1.0.2"))
+
+        // Versión mayor remota sí debe detonar actualización
+        assertTrue(OtaUpdateManager.isNewerVersion("1.0.2", "1.0.1"))
+        assertTrue(OtaUpdateManager.isNewerVersion("v1.1.0", "1.0.2"))
+        assertTrue(OtaUpdateManager.isNewerVersion("2.0.0", "1.0.2"))
     }
 }

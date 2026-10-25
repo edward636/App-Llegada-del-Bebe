@@ -35,9 +35,33 @@ object OtaUpdateManager {
     private const val GITHUB_RELEASES_API = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
 
     /**
+     * Compara dos versiones semánticas (ej: "1.0.2" vs "1.0.1").
+     * Devuelve true estrictamente si remoteVersion es mayor que currentVersion.
+     * Si son iguales o la remota es menor, devuelve false para evitar bucles.
+     */
+    fun isNewerVersion(remoteVersion: String, currentVersion: String): Boolean {
+        val cleanRemote = remoteVersion.removePrefix("v").trim()
+        val cleanCurrent = currentVersion.removePrefix("v").trim()
+        if (cleanRemote.equals(cleanCurrent, ignoreCase = true)) return false
+
+        val rParts = cleanRemote.split(".").map { it.toIntOrNull() ?: 0 }
+        val cParts = cleanCurrent.split(".").map { it.toIntOrNull() ?: 0 }
+
+        val maxLen = maxOf(rParts.size, cParts.size)
+        for (i in 0 until maxLen) {
+            val r = rParts.getOrElse(i) { 0 }
+            val c = cParts.getOrElse(i) { 0 }
+            if (r > c) return true
+            if (r < c) return false
+        }
+        return false
+    }
+
+    /**
      * Consulta actualizaciones OTA priorizando GitHub Releases (Edward636) con fallback a Google Apps Script.
      */
     suspend fun checkForUpdate(
+        currentVersionName: String,
         currentVersionCode: Int,
         checkUrl: String
     ): Result<UpdateInfo> = withContext(Dispatchers.IO) {
@@ -71,22 +95,19 @@ object OtaUpdateManager {
                     }
                 }
 
-                // Parsear versión tipo 1.1.0 -> 110
-                val remoteCode = parseVersionToCode(tagName)
-                if (remoteCode > currentVersionCode && apkDownloadUrl.isNotBlank()) {
-                    return@withContext Result.success(
-                        UpdateInfo(
-                            hasUpdate = true,
-                            latestVersionCode = remoteCode,
-                            latestVersionName = tagName,
-                            apkUrl = apkDownloadUrl,
-                            changelog = changelog
-                        )
+                val hasUpdate = isNewerVersion(tagName, currentVersionName) && apkDownloadUrl.isNotBlank()
+                return@withContext Result.success(
+                    UpdateInfo(
+                        hasUpdate = hasUpdate,
+                        latestVersionCode = parseVersionToCode(tagName),
+                        latestVersionName = tagName,
+                        apkUrl = if (hasUpdate) apkDownloadUrl else "",
+                        changelog = changelog
                     )
-                }
+                )
             }
         } catch (_: Exception) {
-            // Continuar con el fallback si GitHub aún no tiene release creada
+            // Continuar con el fallback si GitHub falla
         }
 
         // 2. Fallback a Google Apps Script
@@ -105,18 +126,18 @@ object OtaUpdateManager {
 
             val json = JSONObject(response)
             val latestCode = json.optInt("latestVersionCode", currentVersionCode)
-            val latestName = json.optString("latestVersionName", "1.0")
+            val latestName = json.optString("latestVersionName", "1.0.0")
             val apkUrl = json.optString("apkUrl", "")
             val changelog = json.optString("changelog", "Mejoras para la llegada del bebé.")
 
-            val hasUpdate = latestCode > currentVersionCode && apkUrl.isNotBlank()
+            val hasUpdate = (isNewerVersion(latestName, currentVersionName) || latestCode > currentVersionCode) && apkUrl.isNotBlank()
 
             Result.success(
                 UpdateInfo(
                     hasUpdate = hasUpdate,
                     latestVersionCode = latestCode,
                     latestVersionName = latestName,
-                    apkUrl = apkUrl,
+                    apkUrl = if (hasUpdate) apkUrl else "",
                     changelog = changelog
                 )
             )
@@ -125,8 +146,8 @@ object OtaUpdateManager {
         }
     }
 
-    private fun parseVersionToCode(versionName: String): Int {
-        val parts = versionName.split(".")
+    fun parseVersionToCode(versionName: String): Int {
+        val parts = versionName.removePrefix("v").split(".")
         return try {
             when (parts.size) {
                 1 -> parts[0].toInt() * 100

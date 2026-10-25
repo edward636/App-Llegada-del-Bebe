@@ -282,6 +282,7 @@ fun SettingsScreen(
                                 isCheckingOta = true
                                 otaCheckStatus = "🔍 Comprobando actualizaciones en GitHub..."
                                 val result = OtaUpdateManager.checkForUpdate(
+                                    currentVersionName = APP_VERSION_NAME,
                                     currentVersionCode = APP_VERSION_CODE,
                                     checkUrl = SecureConfig.getGoogleSheetUrl()
                                 )
