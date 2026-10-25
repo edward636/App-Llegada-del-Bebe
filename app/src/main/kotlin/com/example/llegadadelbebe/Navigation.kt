@@ -33,8 +33,8 @@ import com.example.llegadadelbebe.presentation.inventory.InventoryViewModel
 import com.example.llegadadelbebe.presentation.settings.SettingsScreen
 import kotlinx.coroutines.launch
 
-const val APP_VERSION_CODE = 7
-const val APP_VERSION_NAME = "1.0.6"
+const val APP_VERSION_CODE = 8
+const val APP_VERSION_NAME = "1.0.7"
 
 @Composable
 fun MainNavigation() {
@@ -121,6 +121,7 @@ fun MainNavigation() {
             entry<NavHome> {
                 HomeScreen(
                     viewModel = homeViewModel,
+                    activeUser = activeUserState,
                     onNavigateToInventory = { backStack.add(NavInventory) },
                     onNavigateToConsumables = { backStack.add(NavConsumables) },
                     onNavigateToSettings = { backStack.add(NavSettings) }

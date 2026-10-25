@@ -276,30 +276,13 @@ fun ConfirmGeminiProductDialog(
                     }
                 }
 
-                // Quién registra
-                Text(text = "Registrado por:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(
-                        onClick = { registeredBy = "Papá (Edward)" },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (registeredBy.contains("Papá")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-                        ),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("💙 Papá")
-                    }
-                    Button(
-                        onClick = { registeredBy = "Mamá (Britney)" },
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (registeredBy.contains("Mamá")) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant
-                        ),
-                        shape = RoundedCornerShape(10.dp)
-                    ) {
-                        Text("🌸 Mamá")
-                    }
-                }
+                // Usuario global (definido en Ajustes)
+                Text(
+                    text = "👤 Registrado automáticamente por: $registeredBy",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
 
                 Spacer(modifier = Modifier.height(6.dp))
 

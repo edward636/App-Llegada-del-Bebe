@@ -195,16 +195,17 @@ class GeminiClient(
     private fun executePost(jsonPayload: String, apiKey: String): String {
         var lastException: Exception? = null
 
+        val cleanKey = apiKey.trim()
         for (model in modelChain) {
             try {
-                val url = URL(getUrlForModel(model))
+                val url = URL("${getUrlForModel(model)}?key=$cleanKey")
                 val connection = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
                     connectTimeout = 10000
                     readTimeout = 20000
                     doOutput = true
                     setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                    setRequestProperty("x-goog-api-key", apiKey)
+                    setRequestProperty("x-goog-api-key", cleanKey)
                 }
 
                 OutputStreamWriter(connection.outputStream, "UTF-8").use { writer ->

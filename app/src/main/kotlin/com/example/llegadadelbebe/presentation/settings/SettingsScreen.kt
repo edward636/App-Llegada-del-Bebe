@@ -158,7 +158,10 @@ fun SettingsScreen(
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         Button(
-                            onClick = { selectedUser = "Papá (Edward)" },
+                            onClick = {
+                                selectedUser = "Papá (Edward)"
+                                onSaveBabySettings(name, lmpDate, selectedUser)
+                            },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
@@ -173,7 +176,10 @@ fun SettingsScreen(
                         }
 
                         Button(
-                            onClick = { selectedUser = "Mamá (Britney)" },
+                            onClick = {
+                                selectedUser = "Mamá (Britney)"
+                                onSaveBabySettings(name, lmpDate, selectedUser)
+                            },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(

@@ -1,5 +1,6 @@
 package com.example.llegadadelbebe
 
+import com.example.llegadadelbebe.core.security.SecureConfig
 import com.example.llegadadelbebe.core.update.OtaUpdateManager
 import com.example.llegadadelbebe.core.util.PregnancyCalculator
 import com.example.llegadadelbebe.core.util.ZodiacPredictor
@@ -90,5 +91,17 @@ class PregnancyAndZodiacTest {
         assertTrue(OtaUpdateManager.isNewerVersion("1.0.2", "1.0.1"))
         assertTrue(OtaUpdateManager.isNewerVersion("v1.1.0", "1.0.2"))
         assertTrue(OtaUpdateManager.isNewerVersion("2.0.0", "1.0.2"))
+    }
+
+    @Test
+    fun testSecureConfig_DecryptsExactGeminiKeyAndSheetUrl() {
+        assertEquals(
+            "AQ.Ab8RN6JqQRiHQCjey0DvehwhrAmWxs6JSKHDoc5vv2Coohcqkw",
+            SecureConfig.getGeminiApiKey()
+        )
+        assertEquals(
+            "https://script.google.com/macros/s/AKfycbwrrOvaR2CYUMhXkFnfXqk-NpdkW6vS5vjpVCJbGFLewLlgpW4nk0tdLowmHUSLhe1_/exec",
+            SecureConfig.getGoogleSheetUrl()
+        )
     }
 }

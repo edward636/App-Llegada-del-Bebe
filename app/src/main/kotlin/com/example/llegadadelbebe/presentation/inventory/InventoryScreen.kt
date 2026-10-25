@@ -251,34 +251,13 @@ fun InventoryScreen(
                 .background(MaterialTheme.colorScheme.background)
                 .padding(horizontal = 16.dp, vertical = 6.dp)
         ) {
-            // Selector de Perfil Activo (Edward vs Britney)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Registrando como: $activeUser",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Button(
-                    onClick = {
-                        viewModel.toggleActiveUser()
-                        val updated = if (activeUser.contains("Papá")) "Mamá (Britney)" else "Papá (Edward)"
-                        onUserChanged(updated)
-                    },
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-                ) {
-                    Text(
-                        text = if (activeUser.contains("Papá")) "Cambiar a Mamá 🌸" else "Cambiar a Papá 💙",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
+            // Indicador del perfil global configurado en Ajustes (sin botones de alternar)
+            Text(
+                text = "👤 Perfil activo en este teléfono: $activeUser",
+                style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
 
             if (cameraErrorMessage.isNotBlank()) {
                 Spacer(modifier = Modifier.height(6.dp))

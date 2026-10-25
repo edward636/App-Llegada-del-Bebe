@@ -40,6 +40,7 @@ import com.example.llegadadelbebe.core.util.ZodiacProfile
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
+    activeUser: String = "Papá (Edward)",
     onNavigateToInventory: () -> Unit,
     onNavigateToConsumables: () -> Unit,
     onNavigateToSettings: () -> Unit
@@ -48,6 +49,7 @@ fun HomeScreen(
     val zodiac by viewModel.zodiacProfile.collectAsStateWithLifecycle()
     val summary by viewModel.summary.collectAsStateWithLifecycle()
     val babyName by viewModel.babyName.collectAsStateWithLifecycle()
+    val isMom = activeUser.contains("Mamá", ignoreCase = true)
 
     Column(
         modifier = Modifier
@@ -58,23 +60,39 @@ fun HomeScreen(
             .padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Encabezado ergonómico
+        // Encabezado personalizado según el perfil global configurado en Ajustes
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "Llegada de $babyName 👶💙",
+                    text = if (isMom) "¡Hola Mamita Britney! 🌸" else "¡Hola Papá Edward! 💙",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = "Edward & Britney • Dulce Espera",
+                    text = if (isMom) {
+                        "Dulce espera de $babyName junto a Edward 👶"
+                    } else {
+                        "Preparando la llegada de $babyName junto a Britney 👶"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+            ) {
+                Text(
+                    text = if (isMom) "🌸 Mamá" else "💙 Papá",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
