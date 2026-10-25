@@ -2,7 +2,9 @@ package com.example.llegadadelbebe.presentation.inventory
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.llegadadelbebe.data.remote.GeminiClient
 import com.example.llegadadelbebe.data.repository.BabyInventoryRepository
+import com.example.llegadadelbebe.data.repository.CloudSyncStatus
 import com.example.llegadadelbebe.domain.model.BabyProduct
 import com.example.llegadadelbebe.domain.model.ProductCategory
 import com.example.llegadadelbebe.domain.model.ProductStatus
@@ -15,7 +17,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class InventoryViewModel(
-    private val repository: BabyInventoryRepository
+    private val repository: BabyInventoryRepository,
+    private val geminiClient: GeminiClient = GeminiClient()
 ) : ViewModel() {
 
     private val _selectedCategory = MutableStateFlow<ProductCategory?>(null)
@@ -23,6 +26,12 @@ class InventoryViewModel(
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
+
+    private val _activeUser = MutableStateFlow("Papá (Edward)")
+    val activeUser: StateFlow<String> = _activeUser.asStateFlow()
+
+    private val _isAnalyzingPhoto = MutableStateFlow(false)
+    val isAnalyzingPhoto: StateFlow<Boolean> = _isAnalyzingPhoto.asStateFlow()
 
     val filteredProducts: StateFlow<List<BabyProduct>> = combine(
         repository.products,
@@ -33,7 +42,9 @@ class InventoryViewModel(
             val matchesCategory = category == null || product.category == category
             val matchesQuery = query.isBlank() ||
                     product.name.contains(query, ignoreCase = true) ||
-                    product.brand.contains(query, ignoreCase = true)
+                    product.brand.contains(query, ignoreCase = true) ||
+                    product.ingredients.contains(query, ignoreCase = true) ||
+                    product.manufacturedIn.contains(query, ignoreCase = true)
             matchesCategory && matchesQuery
         }
     }.stateIn(
@@ -42,7 +53,7 @@ class InventoryViewModel(
         initialValue = emptyList()
     )
 
-    val isSyncing: StateFlow<Boolean> = repository.isSyncing
+    val syncStatus: StateFlow<CloudSyncStatus> = repository.syncStatus
 
     fun selectCategory(category: ProductCategory?) {
         _selectedCategory.value = category
@@ -52,10 +63,16 @@ class InventoryViewModel(
         _searchQuery.value = query
     }
 
+    fun setActiveUser(user: String) {
+        _activeUser.value = user
+    }
+
+    fun toggleActiveUser() {
+        _activeUser.value = if (_activeUser.value.contains("Papá")) "Mamá (Britney)" else "Papá (Edward)"
+    }
+
     fun addProduct(product: BabyProduct, googleSheetUrl: String?) {
-        viewModelScope.launch {
-            repository.saveProduct(product, googleSheetUrl)
-        }
+        repository.saveProduct(product.copy(registeredBy = _activeUser.value), googleSheetUrl)
     }
 
     fun toggleProductStatus(product: BabyProduct, googleSheetUrl: String?) {
@@ -65,22 +82,26 @@ class InventoryViewModel(
             ProductStatus.HOSPITAL_PACKED -> ProductStatus.PURCHASED
             ProductStatus.GIFTED -> ProductStatus.HOSPITAL_PACKED
         }
-        viewModelScope.launch {
-            repository.saveProduct(product.copy(status = nextStatus), googleSheetUrl)
-        }
+        repository.saveProduct(product.copy(status = nextStatus), googleSheetUrl)
     }
 
     fun deleteProduct(productId: String) {
         repository.deleteProduct(productId)
     }
 
-    fun syncWithGoogleSheets(googleSheetUrl: String, onResult: (Boolean, String) -> Unit) {
+    fun analyzePhoto(base64Image: String, apiKey: String, onComplete: (BabyProduct?) -> Unit) {
         viewModelScope.launch {
-            val result = repository.syncFromGoogleSheets(googleSheetUrl)
+            _isAnalyzingPhoto.value = true
+            val result = geminiClient.extractProductFromImage(
+                base64Image = base64Image,
+                apiKey = apiKey
+            )
+            _isAnalyzingPhoto.value = false
             if (result.isSuccess) {
-                onResult(true, "¡Sincronización exitosa con Google Sheets!")
+                val extracted = result.getOrNull()?.copy(registeredBy = _activeUser.value)
+                onComplete(extracted)
             } else {
-                onResult(false, result.exceptionOrNull()?.message ?: "Error al sincronizar")
+                onComplete(null)
             }
         }
     }

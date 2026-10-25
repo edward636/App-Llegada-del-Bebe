@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import java.time.LocalDate
 
 data class HomeSummary(
     val totalItems: Int,
@@ -30,19 +31,19 @@ class HomeViewModel(
     private val _babyName = MutableStateFlow("Nuestro Niño")
     val babyName: StateFlow<String> = _babyName.asStateFlow()
 
-    // Configuración inicial de gestación (por defecto: Semana 27, Día 2)
-    private val _currentWeeks = MutableStateFlow(27)
-    val currentWeeks: StateFlow<Int> = _currentWeeks.asStateFlow()
+    // Fecha de Última Regla (FUR / FUM) - Naegele clínico
+    // Por defecto calculada hacia atrás desde la semana 27 + 2 días actuales
+    private val _lmpDate = MutableStateFlow<LocalDate>(
+        LocalDate.now().minusWeeks(27).minusDays(2)
+    )
+    val lmpDate: StateFlow<LocalDate> = _lmpDate.asStateFlow()
 
-    private val _currentDays = MutableStateFlow(2)
-    val currentDays: StateFlow<Int> = _currentDays.asStateFlow()
-
-    val pregnancyStats: StateFlow<PregnancyStats> = _currentWeeks.map { weeks ->
-        PregnancyCalculator.calculateFromCurrentWeeks(weeks, _currentDays.value)
+    val pregnancyStats: StateFlow<PregnancyStats> = _lmpDate.map { lmp ->
+        PregnancyCalculator.calculateFromLmp(lmp)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = PregnancyCalculator.calculateFromCurrentWeeks(27, 2)
+        initialValue = PregnancyCalculator.calculateFromLmp(_lmpDate.value)
     )
 
     val zodiacProfile: StateFlow<ZodiacProfile> = pregnancyStats.map { stats ->
@@ -63,17 +64,19 @@ class HomeViewModel(
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
-        initialValue = HomeSummary(5, 4, 1, 0)
+        initialValue = HomeSummary(3, 3, 0, 0)
     )
 
-    fun updateBabySettings(name: String, weeks: Int, days: Int = 0) {
+    fun updateBabySettings(name: String, lmp: LocalDate) {
         if (name.isNotBlank()) _babyName.value = name
-        _currentWeeks.value = weeks.coerceIn(1, 42)
-        _currentDays.value = days.coerceIn(0, 6)
+        _lmpDate.value = lmp
+    }
+
+    fun updateLmp(lmp: LocalDate) {
+        _lmpDate.value = lmp
     }
 
     fun updateGestationalAge(weeks: Int, days: Int = 0) {
-        _currentWeeks.value = weeks.coerceIn(1, 42)
-        _currentDays.value = days.coerceIn(0, 6)
+        _lmpDate.value = LocalDate.now().minusWeeks(weeks.toLong()).minusDays(days.toLong())
     }
 }

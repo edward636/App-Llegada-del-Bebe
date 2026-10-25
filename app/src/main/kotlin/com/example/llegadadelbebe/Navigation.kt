@@ -26,9 +26,10 @@ import com.example.llegadadelbebe.presentation.inventory.InventoryScreen
 import com.example.llegadadelbebe.presentation.inventory.InventoryViewModel
 import com.example.llegadadelbebe.presentation.settings.SettingsScreen
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
-const val APP_VERSION_CODE = 3
-const val APP_VERSION_NAME = "1.0.2"
+const val APP_VERSION_CODE = 4
+const val APP_VERSION_NAME = "1.0.3"
 
 @Composable
 fun MainNavigation() {
@@ -36,13 +37,14 @@ fun MainNavigation() {
     val coroutineScope = rememberCoroutineScope()
     val backStack = rememberNavBackStack(NavHome)
 
-    // Repositorio compartido en memoria y Sheets
+    // Repositorio central compartido en memoria y Sheets
     val sharedRepository = remember { BabyInventoryRepository() }
 
-    // Estados de configuración del Bebé
+    // Estados de configuración del Bebé y FUR
     var babyNameState by remember { mutableStateOf("Nuestro Niño") }
-    var weeksState by remember { mutableIntStateOf(27) }
-    var daysState by remember { mutableIntStateOf(2) }
+    var lmpDateState by remember { mutableStateOf(LocalDate.now().minusWeeks(27).minusDays(2)) }
+    var activeUserState by remember { mutableStateOf("Papá (Edward)") }
+
     val googleSheetUrlState = remember { SecureConfig.getGoogleSheetUrl() }
     val geminiApiKeyState = remember { SecureConfig.getGeminiApiKey() }
 
@@ -50,8 +52,10 @@ fun MainNavigation() {
     var pendingUpdate by remember { mutableStateOf<UpdateInfo?>(null) }
     var downloadProgress by remember { mutableIntStateOf(-1) }
 
-    // Verificación automática de actualización OTA en segundo plano
+    // Sincronización automática de inicio y chequeo OTA
     LaunchedEffect(Unit) {
+        sharedRepository.initializeSheetUrl(googleSheetUrlState)
+
         val updateResult = OtaUpdateManager.checkForUpdate(
             currentVersionName = APP_VERSION_NAME,
             currentVersionCode = APP_VERSION_CODE,
@@ -67,12 +71,14 @@ fun MainNavigation() {
 
     val homeViewModel: HomeViewModel = viewModel {
         HomeViewModel(sharedRepository).apply {
-            updateGestationalAge(weeksState, daysState)
+            updateLmp(lmpDateState)
         }
     }
 
     val inventoryViewModel: InventoryViewModel = viewModel {
-        InventoryViewModel(sharedRepository)
+        InventoryViewModel(sharedRepository).apply {
+            setActiveUser(activeUserState)
+        }
     }
 
     val consumablesViewModel: ConsumablesAuditViewModel = viewModel {
@@ -95,6 +101,7 @@ fun MainNavigation() {
                 InventoryScreen(
                     viewModel = inventoryViewModel,
                     googleSheetUrl = googleSheetUrlState,
+                    geminiApiKey = geminiApiKeyState,
                     onBack = { backStack.removeLastOrNull() }
                 )
             }
@@ -108,13 +115,14 @@ fun MainNavigation() {
             entry<NavSettings> {
                 SettingsScreen(
                     babyName = babyNameState,
-                    currentWeeks = weeksState,
-                    currentDays = daysState,
-                    onSaveBabySettings = { newName, newWeeks, newDays ->
+                    currentLmp = lmpDateState,
+                    currentUser = activeUserState,
+                    onSaveBabySettings = { newName, newLmp, newUser ->
                         babyNameState = newName
-                        weeksState = newWeeks
-                        daysState = newDays
-                        homeViewModel.updateBabySettings(newName, newWeeks, newDays)
+                        lmpDateState = newLmp
+                        activeUserState = newUser
+                        homeViewModel.updateBabySettings(newName, newLmp)
+                        inventoryViewModel.setActiveUser(newUser)
                     },
                     onBack = { backStack.removeLastOrNull() }
                 )

@@ -40,8 +40,11 @@ data class BabyProduct(
     val quantityCurrent: Int = 1,
     val quantityTarget: Int = 1,
     val status: ProductStatus = ProductStatus.PURCHASED,
+    val ingredients: String = "",     // Ingredientes de cosméticos/alimentos o composición textil
+    val manufacturedIn: String = "",  // País o lugar de origen/fabricación
+    val expirationDate: String = "",  // Fecha de vencimiento/caducidad (si aplica)
     val notes: String = "",
     val geminiOpinion: String = "",   // Consejo u opinión extraído por Gemini 3.8
-    val registeredBy: String = "",    // "Papá" o "Mamá"
+    val registeredBy: String = "",    // "Papá (Edward)" o "Mamá (Britney)"
     val updatedAt: Long = System.currentTimeMillis()
 )

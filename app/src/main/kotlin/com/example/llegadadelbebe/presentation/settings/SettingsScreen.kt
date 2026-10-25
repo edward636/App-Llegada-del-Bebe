@@ -49,26 +49,38 @@ import com.example.llegadadelbebe.APP_VERSION_CODE
 import com.example.llegadadelbebe.APP_VERSION_NAME
 import com.example.llegadadelbebe.core.security.SecureConfig
 import com.example.llegadadelbebe.core.update.OtaUpdateManager
+import com.example.llegadadelbebe.core.util.PregnancyCalculator
+import com.example.llegadadelbebe.core.util.ZodiacPredictor
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     babyName: String,
-    currentWeeks: Int,
-    currentDays: Int,
-    onSaveBabySettings: (name: String, weeks: Int, days: Int) -> Unit,
+    currentLmp: LocalDate,
+    currentUser: String,
+    onSaveBabySettings: (name: String, lmp: LocalDate, user: String) -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     var name by remember { mutableStateOf(babyName.ifBlank { "Nuestro Bebé" }) }
-    var weeks by remember { mutableIntStateOf(currentWeeks) }
-    var days by remember { mutableIntStateOf(currentDays) }
+    var lmpDate by remember { mutableStateOf(currentLmp) }
+    var selectedUser by remember { mutableStateOf(currentUser.ifBlank { "Papá (Edward)" }) }
 
     var otaCheckStatus by remember { mutableStateOf("") }
     var isCheckingOta by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableIntStateOf(-1) }
+
+    // Cálculo dinámico en tiempo real derivado de la FUR seleccionada
+    val calculatedStats = remember(lmpDate) {
+        PregnancyCalculator.calculateFromLmp(lmpDate)
+    }
+    val calculatedZodiac = remember(calculatedStats.estimatedDueDate) {
+        ZodiacPredictor.predictFromDate(calculatedStats.estimatedDueDate)
+    }
 
     Scaffold(
         modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing),
@@ -99,7 +111,61 @@ fun SettingsScreen(
                 .padding(horizontal = 20.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 1. Datos Personales del Bebé Niño
+            // 1. Identificación de Usuario (Papá vs Mamá)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "👤 Usuario en este teléfono",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Selecciona quién está usando la app para registrar cada cambio automáticamente en Google Sheets:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Button(
+                            onClick = { selectedUser = "Papá (Edward)" },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (selectedUser.contains("Papá")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Text(
+                                "💙 Papá (Edward)",
+                                color = if (selectedUser.contains("Papá")) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Button(
+                            onClick = { selectedUser = "Mamá (Britney)" },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (selectedUser.contains("Mamá")) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant
+                            )
+                        ) {
+                            Text(
+                                "🌸 Mamá (Britney)",
+                                color = if (selectedUser.contains("Mamá")) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 2. Cálculo Preciso por Fecha de Última Regla (FUR / FUM)
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -108,7 +174,7 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(
-                        text = "👶 Datos de Nuestro Niño",
+                        text = "📅 Cálculo por Fecha de Última Regla (FUR)",
                         fontWeight = FontWeight.Bold,
                         fontSize = 17.sp,
                         color = MaterialTheme.colorScheme.primary
@@ -124,72 +190,137 @@ fun SettingsScreen(
                         shape = RoundedCornerShape(12.dp)
                     )
 
-                    // Control Ergonómico de Semanas (+ / -)
                     Text(
-                        text = "Semanas de Gestación Actuales:",
+                        text = "Fecha de inicio de la última menstruación (FUM / FUR):",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium
                     )
 
+                    // Control Ergonómico de la FUR (Día, Mes, Año)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Button(
-                            onClick = { if (weeks > 1) weeks-- },
-                            modifier = Modifier.size(48.dp),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("-", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        // Día
+                        Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(text = "Día", style = MaterialTheme.typography.labelSmall)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Button(
+                                    onClick = { if (lmpDate.dayOfMonth > 1) lmpDate = lmpDate.minusDays(1) },
+                                    modifier = Modifier.size(36.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                                ) { Text("-", fontSize = 16.sp) }
+
+                                Text(
+                                    text = String.format("%02d", lmpDate.dayOfMonth),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    modifier = Modifier.padding(horizontal = 6.dp)
+                                )
+
+                                Button(
+                                    onClick = { if (lmpDate.dayOfMonth < lmpDate.lengthOfMonth()) lmpDate = lmpDate.plusDays(1) },
+                                    modifier = Modifier.size(36.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                                ) { Text("+", fontSize = 16.sp) }
+                            }
                         }
-                        Text(
-                            text = "Semana $weeks",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Button(
-                            onClick = { if (weeks < 42) weeks++ },
-                            modifier = Modifier.size(48.dp),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("+", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+
+                        // Mes
+                        Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(text = "Mes", style = MaterialTheme.typography.labelSmall)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Button(
+                                    onClick = { lmpDate = lmpDate.minusMonths(1) },
+                                    modifier = Modifier.size(36.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                                ) { Text("-", fontSize = 16.sp) }
+
+                                Text(
+                                    text = String.format("%02d", lmpDate.monthValue),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    modifier = Modifier.padding(horizontal = 6.dp)
+                                )
+
+                                Button(
+                                    onClick = { lmpDate = lmpDate.plusMonths(1) },
+                                    modifier = Modifier.size(36.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                                ) { Text("+", fontSize = 16.sp) }
+                            }
+                        }
+
+                        // Año
+                        Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(text = "Año", style = MaterialTheme.typography.labelSmall)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Button(
+                                    onClick = { lmpDate = lmpDate.minusYears(1) },
+                                    modifier = Modifier.size(36.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                                ) { Text("-", fontSize = 16.sp) }
+
+                                Text(
+                                    text = lmpDate.year.toString(),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp,
+                                    modifier = Modifier.padding(horizontal = 4.dp)
+                                )
+
+                                Button(
+                                    onClick = { lmpDate = lmpDate.plusYears(1) },
+                                    modifier = Modifier.size(36.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
+                                ) { Text("+", fontSize = 16.sp) }
+                            }
                         }
                     }
 
-                    // Control de Días adicionales (0-6)
-                    Row(
+                    // Tarjeta de Resultado Clínico de Naegele
+                    Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
                     ) {
-                        Button(
-                            onClick = { if (days > 0) days-- },
-                            modifier = Modifier.size(48.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("-", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Text(
-                            text = "+ $days días",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Button(
-                            onClick = { if (days < 6) days++ },
-                            modifier = Modifier.size(48.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("+", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = "✨ Resultado Clínico Obstétrico:",
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = "• Edad gestacional: Semana ${calculatedStats.currentWeeks} + ${calculatedStats.currentDays} días",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            )
+                            Text(
+                                text = "• Fecha Probable de Parto (FPP): ${calculatedStats.estimatedDueDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Text(
+                                text = "• Signo del Bebé: ${calculatedZodiac.signName} (${calculatedZodiac.element})",
+                                style = MaterialTheme.typography.bodySmall
+                            )
+                            Text(
+                                text = "• Faltan: ${calculatedStats.daysRemaining} días (~${calculatedStats.weeksRemaining} semanas)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
             }
 
-            // 2. Estado de Conexión Automática (Sin Llaves Visibles)
+            // 3. Estado de Conexión Automática (Google Sheets & Gemini)
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -198,25 +329,25 @@ fun SettingsScreen(
             ) {
                 Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "🔒 Servicios Conectados de Fábrica",
+                        text = "🔒 Sincronización Automática en la Nube",
                         fontWeight = FontWeight.Bold,
                         fontSize = 16.sp,
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        text = "Las credenciales están integradas de forma segura y encriptada en la app para Edward y Britney.",
+                        text = "Cada cambio que realices se sube de forma instantánea a Google Sheets sin necesidad de tocar ningún botón.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        StatusChip(label = "Google Sheets", status = "🟢 Conectado")
-                        StatusChip(label = "Gemini 3.8", status = "🟢 Conectado")
+                        StatusChip(label = "Google Sheets", status = "🟢 Automático")
+                        StatusChip(label = "Gemini 3.8", status = "🟢 Cámara Activa")
                     }
                 }
             }
 
-            // 3. Actualizaciones Inalámbricas OTA (GitHub Edward636)
+            // 4. Actualizaciones Inalámbricas OTA
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
@@ -243,7 +374,7 @@ fun SettingsScreen(
                     }
 
                     Text(
-                        text = "Distribución automática desde GitHub: Edward636/App-Llegada-del-Bebe.",
+                        text = "Distribución inalámbrica desde GitHub: Edward636/App-Llegada-del-Bebe.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -327,31 +458,10 @@ fun SettingsScreen(
                 }
             }
 
-            // 4. Tarjeta Familiar
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f))
-            ) {
-                Column(modifier = Modifier.padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = "💙 Edward & Britney 🍼",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = "Optimizado para Oppo Reno 12F y Redmi Note 13 Pro+ 5G",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            // Botón Guardar Cambios
+            // 5. Guardar Ajustes
             Button(
                 onClick = {
-                    onSaveBabySettings(name, weeks, days)
+                    onSaveBabySettings(name, lmpDate, selectedUser)
                     onBack()
                 },
                 modifier = Modifier

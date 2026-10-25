@@ -64,6 +64,9 @@ class GoogleSheetsService {
                         quantityCurrent = item.optInt("quantityCurrent", 1),
                         quantityTarget = item.optInt("quantityTarget", 1),
                         status = status,
+                        ingredients = item.optString("ingredients"),
+                        manufacturedIn = item.optString("manufacturedIn"),
+                        expirationDate = item.optString("expirationDate"),
                         notes = item.optString("notes"),
                         geminiOpinion = item.optString("geminiOpinion"),
                         registeredBy = item.optString("registeredBy"),
@@ -95,6 +98,9 @@ class GoogleSheetsService {
                     put("quantityCurrent", product.quantityCurrent)
                     put("quantityTarget", product.quantityTarget)
                     put("status", product.status.name)
+                    put("ingredients", product.ingredients)
+                    put("manufacturedIn", product.manufacturedIn)
+                    put("expirationDate", product.expirationDate)
                     put("notes", product.notes)
                     put("geminiOpinion", product.geminiOpinion)
                     put("registeredBy", product.registeredBy)

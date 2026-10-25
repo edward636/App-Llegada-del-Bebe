@@ -11,7 +11,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -22,7 +27,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,8 +36,10 @@ import com.example.llegadadelbebe.domain.model.ProductCategory
 import com.example.llegadadelbebe.domain.model.ProductStatus
 import java.util.UUID
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddProductDialog(
+    defaultRegisteredBy: String = "Papá (Edward)",
     onDismiss: () -> Unit,
     onSave: (BabyProduct) -> Unit
 ) {
@@ -43,8 +49,13 @@ fun AddProductDialog(
     var selectedCategory by remember { mutableStateOf(ProductCategory.CLOTHING) }
     var stageSize by remember { mutableStateOf("RN") }
     var quantity by remember { mutableIntStateOf(1) }
+    var ingredients by remember { mutableStateOf("") }
+    var manufacturedIn by remember { mutableStateOf("") }
+    var expirationDate by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
-    var registeredBy by remember { mutableStateOf("Mamá") }
+    var registeredBy by remember { mutableStateOf(defaultRegisteredBy) }
+
+    var categoryDropdownExpanded by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
         Card(
@@ -58,7 +69,7 @@ fun AddProductDialog(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text(
-                    text = "Registrar Producto del Bebé 👶",
+                    text = "Registrar Producto Manual 👶💙",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -68,8 +79,9 @@ fun AddProductDialog(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Nombre del artículo") },
-                    placeholder = { Text("Ej: Bodies manga larga") },
-                    modifier = Modifier.fillMaxWidth()
+                    placeholder = { Text("Ej: Bodies manga corta") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -77,14 +89,48 @@ fun AddProductDialog(
                         value = brand,
                         onValueChange = { brand = it },
                         label = { Text("Marca") },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
                     )
                     OutlinedTextField(
                         value = model,
                         onValueChange = { model = it },
                         label = { Text("Modelo/Línea") },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
                     )
+                }
+
+                // Categoría Dropdown
+                ExposedDropdownMenuBox(
+                    expanded = categoryDropdownExpanded,
+                    onExpandedChange = { categoryDropdownExpanded = !categoryDropdownExpanded }
+                ) {
+                    OutlinedTextField(
+                        value = "${selectedCategory.icon} ${selectedCategory.displayName}",
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Categoría") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryDropdownExpanded) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .menuAnchor(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    ExposedDropdownMenu(
+                        expanded = categoryDropdownExpanded,
+                        onDismissRequest = { categoryDropdownExpanded = false }
+                    ) {
+                        ProductCategory.entries.forEach { cat ->
+                            DropdownMenuItem(
+                                text = { Text("${cat.icon} ${cat.displayName}") },
+                                onClick = {
+                                    selectedCategory = cat
+                                    categoryDropdownExpanded = false
+                                }
+                            )
+                        }
+                    }
                 }
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -93,56 +139,85 @@ fun AddProductDialog(
                         onValueChange = { stageSize = it },
                         label = { Text("Talla / Etapa") },
                         placeholder = { Text("RN / 0-3M") },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
                     )
                     OutlinedTextField(
                         value = quantity.toString(),
                         onValueChange = { quantity = it.toIntOrNull() ?: 1 },
                         label = { Text("Cantidad") },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
                     )
                 }
 
-                // Selector de categoría rápido
-                Text("Categoría:", style = MaterialTheme.typography.labelMedium)
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    val quickCategories = listOf(ProductCategory.CLOTHING, ProductCategory.DIAPERS, ProductCategory.WIPES_HYGIENE, ProductCategory.FEEDING)
-                    quickCategories.forEach { cat ->
-                        OutlinedButton(
-                            onClick = { selectedCategory = cat },
-                            modifier = Modifier.weight(1f),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(cat.icon, style = MaterialTheme.typography.bodyMedium)
-                        }
-                    }
-                }
-
-                // Registrado por (Papá o Mamá)
-                Row(
+                OutlinedTextField(
+                    value = ingredients,
+                    onValueChange = { ingredients = it },
+                    label = { Text("🌿 Ingredientes / Composición") },
+                    placeholder = { Text("Ej: Algodón Pima, sin químicos...") },
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Registrado por: $registeredBy", style = MaterialTheme.typography.bodyMedium)
-                    Button(onClick = { registeredBy = if (registeredBy == "Mamá") "Papá" else "Mamá" }) {
-                        Text("Alternar a ${if (registeredBy == "Mamá") "Papá" else "Mamá"}")
-                    }
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = manufacturedIn,
+                        onValueChange = { manufacturedIn = it },
+                        label = { Text("🏭 Fabricado en") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    OutlinedTextField(
+                        value = expirationDate,
+                        onValueChange = { expirationDate = it },
+                        label = { Text("📅 Vencimiento") },
+                        placeholder = { Text("mm/aaaa o N/A") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
                 }
 
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
-                    label = { Text("Notas / Detalles adicionales") },
-                    modifier = Modifier.fillMaxWidth()
+                    label = { Text("Detalles / Notas") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                // Quién registra
+                Text(text = "Registrado por:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(
+                        onClick = { registeredBy = "Papá (Edward)" },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (registeredBy.contains("Papá")) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("💙 Papá")
+                    }
+                    Button(
+                        onClick = { registeredBy = "Mamá (Britney)" },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (registeredBy.contains("Mamá")) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceVariant
+                        ),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text("🌸 Mamá")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) {
                         Text("Cancelar")
                     }
                     Button(
@@ -151,21 +226,24 @@ fun AddProductDialog(
                                 onSave(
                                     BabyProduct(
                                         id = UUID.randomUUID().toString(),
-                                        name = name,
-                                        brand = brand,
-                                        model = model,
+                                        name = name.trim(),
+                                        brand = brand.trim(),
+                                        model = model.trim(),
                                         category = selectedCategory,
-                                        stageSize = stageSize,
-                                        quantityCurrent = quantity,
-                                        quantityTarget = quantity,
-                                        status = ProductStatus.PURCHASED,
-                                        notes = notes,
-                                        registeredBy = registeredBy
+                                        stageSize = stageSize.trim(),
+                                        quantityCurrent = quantity.coerceAtLeast(1),
+                                        ingredients = ingredients.trim(),
+                                        manufacturedIn = manufacturedIn.trim(),
+                                        expirationDate = expirationDate.trim(),
+                                        notes = notes.trim(),
+                                        registeredBy = registeredBy,
+                                        updatedAt = System.currentTimeMillis()
                                     )
                                 )
                             }
                         },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
                         Text("Guardar")
                     }

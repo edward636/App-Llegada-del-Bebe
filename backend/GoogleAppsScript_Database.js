@@ -1,21 +1,19 @@
 /**
  * ==============================================================================
  * GOOGLE APPS SCRIPT - BACKEND BASE DE DATOS Y DISTRIBUIDOR OTA 👶🍼💙
- * USO EXCLUSIVO: PAPÁ Y BRITNEY
+ * USO EXCLUSIVO: PAPÁ (EDWARD) Y MAMÁ (BRITNEY)
  * ==============================================================================
  * FUNCIONALIDADES:
  * 1. Base de datos del inventario del bebé (doGet / doPost).
+ *    - Soporta ingredientes/composición, lugar de fabricación y vencimiento.
+ *    - Soporta identificación de quién registra (Papá vs Mamá).
  * 2. Distribuidor Automático OTA (Over The Air):
- *    - Recibe el nuevo APK compilado desde tu computadora.
- *    - Lo guarda en tu Google Drive ("App_Bebe_Updates").
- *    - Genera el enlace de descarga directa.
- *    - Notifica a los teléfonos de Papá y Britney para actualizar con 1 toque.
+ *    - Consulta de versiones con soporte semántico y fallback a GitHub.
  * ==============================================================================
  */
 
 const SHEET_NAME_INVENTORY = "Inventario_Bebe";
 const SHEET_NAME_CONFIG = "App_Config";
-const DRIVE_FOLDER_NAME = "App_Bebe_Updates";
 
 function getOrCreateSheet(sheetName) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -26,12 +24,13 @@ function getOrCreateSheet(sheetName) {
       sheet.appendRow([
         "id", "name", "brand", "model", "category", "stageSize", 
         "quantityCurrent", "quantityTarget", "status", "notes", 
-        "geminiOpinion", "registeredBy", "updatedAt"
+        "geminiOpinion", "registeredBy", "updatedAt",
+        "ingredients", "manufacturedIn", "expirationDate"
       ]);
-      sheet.getRange(1, 1, 1, 13).setFontWeight("bold").setBackground("#E8F1F5");
+      sheet.getRange(1, 1, 1, 16).setFontWeight("bold").setBackground("#E8F1F5");
     } else if (sheetName === SHEET_NAME_CONFIG) {
       sheet.appendRow(["versionCode", "versionName", "apkUrl", "changelog", "updatedAt"]);
-      sheet.appendRow([1, "1.0.0", "", "Versión inicial", new Date().toISOString()]);
+      sheet.appendRow([3, "1.0.2", "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.0.2/app-debug.apk", "Actualización automática y cámara", new Date().toISOString()]);
       sheet.getRange(1, 1, 1, 5).setFontWeight("bold").setBackground("#D8F3DC");
     }
   }
@@ -49,8 +48,8 @@ function doGet(e) {
     const configSheet = getOrCreateSheet(SHEET_NAME_CONFIG);
     const row = configSheet.getRange(2, 1, 1, 5).getValues()[0];
     return ContentService.createTextOutput(JSON.stringify({
-      latestVersionCode: Number(row[0]) || 1,
-      latestVersionName: String(row[1]) || "1.0.0",
+      latestVersionCode: Number(row[0]) || 3,
+      latestVersionName: String(row[1]) || "1.0.2",
       apkUrl: String(row[2]) || "",
       changelog: String(row[3]) || "Mejoras para la llegada del bebé."
     })).setMimeType(ContentService.MimeType.JSON);
@@ -81,7 +80,10 @@ function doGet(e) {
         notes: String(row[9]),
         geminiOpinion: String(row[10]),
         registeredBy: String(row[11]),
-        updatedAt: Number(row[12]) || Date.now()
+        updatedAt: Number(row[12]) || Date.now(),
+        ingredients: String(row[13] || ""),
+        manufacturedIn: String(row[14] || ""),
+        expirationDate: String(row[15] || "")
       });
     }
 
@@ -96,7 +98,7 @@ function doGet(e) {
 }
 
 /**
- * Endpoint POST: Agrega producto al inventario O sube nueva versión OTA a Google Drive
+ * Endpoint POST: Agrega o actualiza producto en el Inventario del Bebé
  */
 function doPost(e) {
   const lock = LockService.getScriptLock();
@@ -104,40 +106,6 @@ function doPost(e) {
 
   try {
     const payload = JSON.parse(e.postData.contents);
-
-    // CASO A: Publicar nueva versión OTA automáticamente desde tu PC
-    if (payload.action === "publishOta") {
-      const bytes = Utilities.base64Decode(payload.apkBase64);
-      const blob = Utilities.newBlob(bytes, "application/vnd.android.package-archive", "LlegadaDelBebe_v" + payload.versionName + ".apk");
-
-      // Carpeta en Google Drive
-      const folders = DriveApp.getFoldersByName(DRIVE_FOLDER_NAME);
-      const folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(DRIVE_FOLDER_NAME);
-      const file = folder.createFile(blob);
-      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-
-      // Enlace directo de descarga para Android
-      const fileId = file.getId();
-      const directDownloadUrl = "https://drive.google.com/uc?export=download&id=" + fileId;
-
-      // Actualizar registro en la pestaña App_Config
-      const configSheet = getOrCreateSheet(SHEET_NAME_CONFIG);
-      configSheet.getRange(2, 1, 1, 5).setValues([[
-        Number(payload.versionCode) || 1,
-        String(payload.versionName) || "1.0.0",
-        directDownloadUrl,
-        String(payload.changelog) || "Nueva actualización disponible.",
-        new Date().toISOString()
-      ]]);
-
-      return ContentService.createTextOutput(JSON.stringify({
-        status: "success",
-        message: "¡APK subido a Google Drive y actualización OTA publicada!",
-        downloadUrl: directDownloadUrl
-      })).setMimeType(ContentService.MimeType.JSON);
-    }
-
-    // CASO B: Guardar producto en Inventario
     const sheet = getOrCreateSheet(SHEET_NAME_INVENTORY);
     const item = payload.item;
 
@@ -168,11 +136,14 @@ function doPost(e) {
       item.notes || "",
       item.geminiOpinion || "",
       item.registeredBy || "",
-      item.updatedAt || Date.now()
+      item.updatedAt || Date.now(),
+      item.ingredients || "",
+      item.manufacturedIn || "",
+      item.expirationDate || ""
     ];
 
     if (existingRowIndex > 0) {
-      sheet.getRange(existingRowIndex, 1, 1, 13).setValues([rowData]);
+      sheet.getRange(existingRowIndex, 1, 1, 16).setValues([rowData]);
     } else {
       sheet.appendRow(rowData);
     }
