@@ -334,14 +334,14 @@ class PregnancyAndZodiacTest {
             birthTime = java.time.LocalTime.of(18, 45)
         )
         assertEquals(com.example.llegadadelbebe.domain.model.ZodiacSign.ARIES, mom.sun.sign)
-        assertEquals(com.example.llegadadelbebe.domain.model.ZodiacSign.GEMINI, mom.moon.sign)
+        assertEquals(com.example.llegadadelbebe.domain.model.ZodiacSign.SCORPIO, mom.moon.sign)
         assertEquals(com.example.llegadadelbebe.domain.model.ZodiacSign.LIBRA, mom.ascendant.sign)
 
         // Sinastría parental
         val report = com.example.llegadadelbebe.core.util.AstronomicalEphemerisCalculator.evaluateParentCompatibility(dad, mom)
-        assertTrue(report.masterBondTitle.contains("Conjunción Sol–Luna en Géminis"))
-        assertEquals(99, report.communicationScore)
-        assertEquals(96, report.parentingHarmonyScore)
+        assertTrue(report.masterBondTitle.contains("Sextil"))
+        assertEquals(98, report.communicationScore)
+        assertEquals(97, report.parentingHarmonyScore)
     }
 
     @Test

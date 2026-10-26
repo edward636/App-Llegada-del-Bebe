@@ -612,7 +612,7 @@ private fun FamilyTriadAndGeminiTabContent(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "La combinación de Mamá Britney (${mother.sun.displayName} ☀️, ${mother.moon.displayName} 🌙, ${mother.ascendant.displayName} ⬆️) envuelve al bebé en ternura, canciones, estímulo mental temprano y mucha protección. Su Sol en Aries le dará la fuerza y vitalidad para proteger a su hijo en cada etapa, mientras su Luna en Géminis creará momentos de complicidad, juegos y risas.",
+                text = "La combinación de Mamá Britney (${mother.sun.displayName} ☀️, ${mother.moon.displayName} 🌙, ${mother.ascendant.displayName} ⬆️) envuelve al bebé en un amor incondicional, intuición protectora profunda y armonía. Su Sol en Aries le dará la valentía y vitalidad para defender y guiar a su hijo, su Luna en Escorpio le otorgará un sexto sentido maternal infalible para entender al niño incluso en silencio, y su Ascendente en Libra creará un ambiente dulce, estético y en paz.",
                 style = MaterialTheme.typography.bodyMedium
             )
         }

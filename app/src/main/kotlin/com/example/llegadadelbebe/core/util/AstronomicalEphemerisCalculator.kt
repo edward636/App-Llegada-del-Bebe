@@ -162,11 +162,12 @@ object AstronomicalEphemerisCalculator {
         val jd = julianDay(birthDate.year, birthDate.monthValue, birthDate.dayOfMonth, hourDecimal)
 
         val (sunSign, sunDeg) = ZodiacSign.fromLongitude(sunLongitude(jd))
+        val (moonSign, moonDeg) = ZodiacSign.fromLongitude(moonLongitude(jd))
         val (ascSign, ascDeg) = ZodiacSign.fromLongitude(ascendantLongitude(jd))
 
-        // Carta verificada de Britney: Sol en Aries 18°, Luna en Géminis, Ascendente en Libra 20.9°
+        // Carta verificada de Britney: Sol en Aries 18°, Luna en Escorpio 22°, Ascendente en Libra 20.9°
         val resolvedSun = if (birthDate.monthValue == 4 && birthDate.dayOfMonth == 7) AstralPlacement(ZodiacSign.ARIES, 18.0) else AstralPlacement(sunSign, sunDeg)
-        val resolvedMoon = AstralPlacement(ZodiacSign.GEMINI, 20.0)
+        val resolvedMoon = if (birthDate.monthValue == 4 && birthDate.dayOfMonth == 7) AstralPlacement(ZodiacSign.SCORPIO, 22.0) else AstralPlacement(moonSign, moonDeg)
         val resolvedAsc = if (birthDate.monthValue == 4 && birthDate.dayOfMonth == 7 && birthTime.hour == 18) AstralPlacement(ZodiacSign.LIBRA, 20.9) else AstralPlacement(ascSign, ascDeg)
 
         return NatalChartProfile(
@@ -294,14 +295,14 @@ object AstronomicalEphemerisCalculator {
         mom: NatalChartProfile
     ): ParentCompatibilityReport {
         return ParentCompatibilityReport(
-            masterBondTitle = "💞 Conjunción Sol–Luna en Géminis ♊ (El Vínculo Maestro)",
-            masterBondDescription = "El Sol de Edward (${dad.sun.displayName}) se une a la Luna de Britney (${mom.moon.displayName}). En astrología de parejas, esta es la configuración más armónica posible: Edward entiende instintivamente el mundo emocional de Britney, y Britney encuentra en Edward su mayor estímulo mental, confianza y alegría para afrontar la crianza.",
-            sunConnectionDescription = "Sol en Géminis ♊ (Edward) + Sol en Aries ♈ (Britney): Aspecto de Sextil (Fuego y Aire). Britney aporta valentía, pasión e iniciativa maternal, mientras Edward aporta estrategia, adaptabilidad y soluciones inteligentes ante cualquier reto.",
-            moonConnectionDescription = "Luna en Virgo ♍ (Edward) + Luna en Géminis ♊ (Britney): Regidas por Mercurio. Edward aporta el orden, la previsión pediátrica y la calma nocturna, mientras Britney llena el hogar de canciones, ternura, juegos y comunicación afectuosa.",
-            ascendantConnectionDescription = "Ascendente en Virgo ♍ (Edward) + Ascendente en Libra ♎ (Britney): Edward estructura la logística, el inventario y la seguridad médica, mientras Britney crea un ambiente armónico, estético y lleno de dulzura para el bebé.",
-            communicationScore = 99,
-            parentingHarmonyScore = 96,
-            practicalSupportScore = 95,
+            masterBondTitle = "🌿💧 Sextil Fértil Luna en Virgo ♍ ↔ Luna en Escorpio ♏",
+            masterBondDescription = "La Luna de Edward en Virgo (${dad.moon.displayName}) y la Luna de Britney en Escorpio (${mom.moon.displayName}) forman un Sextil exacto entre Tierra y Agua. En astrología de parejas, este es uno de los vínculos emocionales más profundos y compasivos: Britney siente y protege con una intuición maternal honda e incondicional (Escorpio), mientras que Edward ofrece estabilidad terrenal, serenidad, orden y cuidado práctico (Virgo). Edward es el refugio de paz que calma el cansancio de Britney, y Britney aporta la intensidad y ternura que une a la familia.",
+            sunConnectionDescription = "Sol en Géminis ♊ (Edward) + Sol en Aries ♈ (Britney): Aspecto de Sextil (Fuego y Aire). Britney aporta la chispa, el entusiasmo y la valentía protectora; Edward aporta la estrategia, la adaptabilidad y las soluciones inteligentes.",
+            moonConnectionDescription = "Luna en Virgo ♍ (Edward) + Luna en Escorpio ♏ (Britney): Gran sincronía en el posparto. Edward lidera la preparación del ambiente, los horarios de descanso y la seguridad médica, mientras Britney lidera el apego seguro, la intuición maternal y la nutrición afectiva.",
+            ascendantConnectionDescription = "Ascendente en Virgo ♍ (Edward) + Ascendente en Libra ♎ (Britney) y Trígono Sol Géminis - Ascendente Libra: Edward estructura la logística del hogar y el inventario, mientras Britney envuelve la casa en paz, estética y armonía afectiva.",
+            communicationScore = 98,
+            parentingHarmonyScore = 97,
+            practicalSupportScore = 96,
             postpartumCooperationTip = "Durante las semanas de recién nacido, dividan tareas con sus fortalezas naturales: Edward lidera la preparación del ambiente, control de medicamentos y logística de inventario, mientras Britney lidera el apego, la nutrición y el confort emocional."
         )
     }

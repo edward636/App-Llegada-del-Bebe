@@ -35,8 +35,8 @@ import com.example.llegadadelbebe.presentation.zodiac.FamilySynastryScreen
 import com.example.llegadadelbebe.presentation.zodiac.FamilySynastryViewModel
 import kotlinx.coroutines.launch
 
-const val APP_VERSION_CODE = 14
-const val APP_VERSION_NAME = "1.2.0"
+const val APP_VERSION_CODE = 15
+const val APP_VERSION_NAME = "1.2.1"
 
 @Composable
 fun MainNavigation() {

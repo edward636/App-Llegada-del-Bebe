@@ -251,7 +251,7 @@ fun ZodiacCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "👨‍👩‍👦 Tríada: Papá (☀️ Géminis 🌙 Virgo ⬆️ Virgo) • Mamá (☀️ Aries 🌙 Géminis ⬆️ Libra)",
+                    text = "👨‍👩‍👦 Tríada: Papá (☀️ Géminis 🌙 Virgo ⬆️ Virgo) • Mamá (☀️ Aries 🌙 Escorpio ⬆️ Libra)",
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
