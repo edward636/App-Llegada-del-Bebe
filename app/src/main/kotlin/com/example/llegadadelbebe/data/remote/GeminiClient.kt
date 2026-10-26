@@ -432,6 +432,57 @@ class GeminiClient(
         }
     }
 
+    /**
+     * Genera una lectura profunda de sinastría familiar para Edward, Britney y su bebé
+     * combinando los 9 puntos astrales (Sol, Luna y Ascendente de los tres).
+     */
+    suspend fun getFamilySynastryReading(
+        synastrySummaryText: String,
+        apiKey: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val prompt = """
+                Eres un astrólogo humanista, psicólogo familiar y puericultor empático acompañando a Edward (Papá) y Britney (Mamá) ante la llegada de su bebé varón.
+                Analiza la siguiente configuración astral de la familia:
+                $synastrySummaryText
+                
+                Redacta una lectura profunda, afectuosa, bien estructurada con subtítulos y emojis:
+                1. 💑 Sinastría Parental (Edward ↔ Britney): El regalo cósmico de su unión (destacando la Conjunción Sol Géminis - Luna Géminis, el trígono de Aire y cómo complementan el orden de Virgo con la valentía de Aries).
+                2. 💙👶 El Vínculo Padre-Hijo (Luna y Ascendente de Edward con el Bebé): Cómo Edward calmará, cuidará y guiará al niño varón desde su Luna protectora en Virgo.
+                3. 🌸👶 El Vínculo Madre-Hijo (Britney con el Bebé): La nutrición emocional de su Luna en Géminis y la paz y armonía de su Ascendente en Libra.
+                4. 👨‍👩‍👦 Consejo Práctico para el Hogar: Claves para apoyarse durante el posparto y mantener la alegría en casa.
+                
+                Tono: Cercano, inspirador, maduro y lleno de luz para su nueva etapa como padres.
+            """.trimIndent()
+
+            val requestBody = JSONObject().apply {
+                val contents = JSONArray().apply {
+                    put(JSONObject().apply {
+                        val parts = JSONArray().apply {
+                            put(JSONObject().put("text", prompt))
+                        }
+                        put("parts", parts)
+                    })
+                }
+                put("contents", contents)
+            }
+
+            val responseString = executePost(requestBody.toString(), apiKey)
+            val jsonResponse = JSONObject(responseString)
+            val readingText = jsonResponse
+                .getJSONArray("candidates")
+                .getJSONObject(0)
+                .getJSONObject("content")
+                .getJSONArray("parts")
+                .getJSONObject(0)
+                .getString("text")
+
+            Result.success(readingText.trim())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     private fun executePost(jsonPayload: String, apiKey: String): String {
         var lastException: Exception? = null
 

@@ -31,10 +31,12 @@ import com.example.llegadadelbebe.presentation.home.OtaUpdateDialog
 import com.example.llegadadelbebe.presentation.inventory.InventoryScreen
 import com.example.llegadadelbebe.presentation.inventory.InventoryViewModel
 import com.example.llegadadelbebe.presentation.settings.SettingsScreen
+import com.example.llegadadelbebe.presentation.zodiac.FamilySynastryScreen
+import com.example.llegadadelbebe.presentation.zodiac.FamilySynastryViewModel
 import kotlinx.coroutines.launch
 
-const val APP_VERSION_CODE = 13
-const val APP_VERSION_NAME = "1.1.2"
+const val APP_VERSION_CODE = 14
+const val APP_VERSION_NAME = "1.2.0"
 
 @Composable
 fun MainNavigation() {
@@ -114,6 +116,10 @@ fun MainNavigation() {
         ConsumablesAuditViewModel(sharedRepository)
     }
 
+    val synastryViewModel: FamilySynastryViewModel = viewModel {
+        FamilySynastryViewModel(localPreferences)
+    }
+
     NavDisplay(
         backStack = backStack,
         onBack = { backStack.removeLastOrNull() },
@@ -124,6 +130,7 @@ fun MainNavigation() {
                     activeUser = activeUserState,
                     onNavigateToInventory = { backStack.add(NavInventory) },
                     onNavigateToConsumables = { backStack.add(NavConsumables) },
+                    onNavigateToSynastry = { backStack.add(NavFamilySynastry) },
                     onNavigateToSettings = { backStack.add(NavSettings) }
                 )
             }
@@ -142,6 +149,13 @@ fun MainNavigation() {
             entry<NavConsumables> {
                 ConsumablesAuditScreen(
                     viewModel = consumablesViewModel,
+                    apiKey = geminiApiKeyState,
+                    onBack = { backStack.removeLastOrNull() }
+                )
+            }
+            entry<NavFamilySynastry> {
+                FamilySynastryScreen(
+                    viewModel = synastryViewModel,
                     apiKey = geminiApiKeyState,
                     onBack = { backStack.removeLastOrNull() }
                 )

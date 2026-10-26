@@ -147,6 +147,42 @@ class LocalPreferences(context: Context) {
         return current
     }
 
+    fun getFatherBirthDate(): LocalDate {
+        val defaultEpoch = LocalDate.of(1990, 5, 31).toEpochDay()
+        return LocalDate.ofEpochDay(prefs.getLong(KEY_FATHER_BIRTH_EPOCH, defaultEpoch))
+    }
+
+    fun getFatherBirthTime(): java.time.LocalTime {
+        val defaultMinutes = 13 * 60 + 45 // 13:45
+        val totalMinutes = prefs.getInt(KEY_FATHER_BIRTH_MINUTES, defaultMinutes)
+        return java.time.LocalTime.of(totalMinutes / 60, totalMinutes % 60)
+    }
+
+    fun saveFatherBirth(date: LocalDate, time: java.time.LocalTime) {
+        prefs.edit()
+            .putLong(KEY_FATHER_BIRTH_EPOCH, date.toEpochDay())
+            .putInt(KEY_FATHER_BIRTH_MINUTES, time.hour * 60 + time.minute)
+            .apply()
+    }
+
+    fun getMotherBirthDate(): LocalDate {
+        val defaultEpoch = LocalDate.of(2004, 4, 7).toEpochDay()
+        return LocalDate.ofEpochDay(prefs.getLong(KEY_MOTHER_BIRTH_EPOCH, defaultEpoch))
+    }
+
+    fun getMotherBirthTime(): java.time.LocalTime {
+        val defaultMinutes = 18 * 60 + 45 // 18:45
+        val totalMinutes = prefs.getInt(KEY_MOTHER_BIRTH_MINUTES, defaultMinutes)
+        return java.time.LocalTime.of(totalMinutes / 60, totalMinutes % 60)
+    }
+
+    fun saveMotherBirth(date: LocalDate, time: java.time.LocalTime) {
+        prefs.edit()
+            .putLong(KEY_MOTHER_BIRTH_EPOCH, date.toEpochDay())
+            .putInt(KEY_MOTHER_BIRTH_MINUTES, time.hour * 60 + time.minute)
+            .apply()
+    }
+
     companion object {
         private const val PREFS_NAME = "llegada_del_bebe_prefs"
         private const val KEY_BABY_NAME = "baby_name"
@@ -154,5 +190,9 @@ class LocalPreferences(context: Context) {
         private const val KEY_ACTIVE_USER = "active_user"
         private const val KEY_INVENTORY_CACHE = "inventory_cache_json"
         private const val KEY_HOSPITAL_BAG_CHECKED = "hospital_bag_checked_ids"
+        private const val KEY_FATHER_BIRTH_EPOCH = "father_birth_epoch"
+        private const val KEY_FATHER_BIRTH_MINUTES = "father_birth_minutes"
+        private const val KEY_MOTHER_BIRTH_EPOCH = "mother_birth_epoch"
+        private const val KEY_MOTHER_BIRTH_MINUTES = "mother_birth_minutes"
     }
 }

@@ -316,4 +316,49 @@ class PregnancyAndZodiacTest {
         assertEquals(1, summary.generalSummary?.sizeM?.packagesCount)
         assertEquals(20, summary.generalSummary?.sizeM?.unitsCount)
     }
+
+    @Test
+    fun testAstronomicalSynastry_EdwardAndBritneyOfficialPlacements() {
+        // Edward: 31/05/1990 13:45
+        val dad = com.example.llegadadelbebe.core.util.AstronomicalEphemerisCalculator.getFatherProfile(
+            birthDate = LocalDate.of(1990, 5, 31),
+            birthTime = java.time.LocalTime.of(13, 45)
+        )
+        assertEquals(com.example.llegadadelbebe.domain.model.ZodiacSign.GEMINI, dad.sun.sign)
+        assertEquals(com.example.llegadadelbebe.domain.model.ZodiacSign.VIRGO, dad.moon.sign)
+        assertEquals(com.example.llegadadelbebe.domain.model.ZodiacSign.VIRGO, dad.ascendant.sign)
+
+        // Britney: 07/04/2004 18:45
+        val mom = com.example.llegadadelbebe.core.util.AstronomicalEphemerisCalculator.getMotherProfile(
+            birthDate = LocalDate.of(2004, 4, 7),
+            birthTime = java.time.LocalTime.of(18, 45)
+        )
+        assertEquals(com.example.llegadadelbebe.domain.model.ZodiacSign.ARIES, mom.sun.sign)
+        assertEquals(com.example.llegadadelbebe.domain.model.ZodiacSign.GEMINI, mom.moon.sign)
+        assertEquals(com.example.llegadadelbebe.domain.model.ZodiacSign.LIBRA, mom.ascendant.sign)
+
+        // Sinastría parental
+        val report = com.example.llegadadelbebe.core.util.AstronomicalEphemerisCalculator.evaluateParentCompatibility(dad, mom)
+        assertTrue(report.masterBondTitle.contains("Conjunción Sol–Luna en Géminis"))
+        assertEquals(99, report.communicationScore)
+        assertEquals(96, report.parentingHarmonyScore)
+    }
+
+    @Test
+    fun testAstronomicalSynastry_BabyProjectionAndMoonWindow() {
+        val fpp = LocalDate.of(2026, 11, 20)
+        val baby = com.example.llegadadelbebe.core.util.AstronomicalEphemerisCalculator.calculateBabyProjectedChart(
+            babyName = "Nuestro Niño",
+            fppDate = fpp,
+            simulatedHour = 14
+        )
+        org.junit.Assert.assertNotNull(baby.sun.sign)
+        org.junit.Assert.assertNotNull(baby.projectedMoon.sign)
+        org.junit.Assert.assertNotNull(baby.simulatedAscendant.sign)
+        assertTrue(baby.simulatedShiftName.contains("Tarde"))
+
+        val window = com.example.llegadadelbebe.core.util.AstronomicalEphemerisCalculator.calculateMoonWindow(fpp)
+        assertEquals(15, window.size) // -7 a +7 = 15 días
+        assertTrue(window.any { it.isFppDay })
+    }
 }

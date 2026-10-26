@@ -43,6 +43,7 @@ fun HomeScreen(
     activeUser: String = "Papá (Edward)",
     onNavigateToInventory: () -> Unit,
     onNavigateToConsumables: () -> Unit,
+    onNavigateToSynastry: () -> Unit = {},
     onNavigateToSettings: () -> Unit
 ) {
     val stats by viewModel.pregnancyStats.collectAsStateWithLifecycle()
@@ -100,8 +101,12 @@ fun HomeScreen(
         // Tarjeta de Gestación y Cuenta Regresiva
         PregnancyCountdownCard(stats)
 
-        // Tarjeta de Predicción Zodiacal
-        ZodiacCard(zodiac, stats.estimatedDueDate.toString())
+        // Tarjeta de Predicción Zodiacal & Sinastría Familiar
+        ZodiacCard(
+            zodiac = zodiac,
+            dueDateStr = stats.estimatedDueDate.toString(),
+            onSynastryClick = onNavigateToSynastry
+        )
 
         // Resumen Rápido de Inventario
         InventorySummaryCard(
@@ -199,7 +204,11 @@ fun PregnancyCountdownCard(stats: PregnancyStats) {
 }
 
 @Composable
-fun ZodiacCard(zodiac: ZodiacProfile, dueDateStr: String) {
+fun ZodiacCard(
+    zodiac: ZodiacProfile,
+    dueDateStr: String,
+    onSynastryClick: () -> Unit = {}
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -234,6 +243,30 @@ fun ZodiacCard(zodiac: ZodiacProfile, dueDateStr: String) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
+
+            Spacer(modifier = Modifier.height(10.dp))
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "👨‍👩‍👦 Tríada: Papá (☀️ Géminis 🌙 Virgo ⬆️ Virgo) • Mamá (☀️ Aries 🌙 Géminis ⬆️ Libra)",
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = onSynastryClick,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text("✨ Ver Sinastría Familiar & Fusión con el Bebé")
+            }
         }
     }
 }

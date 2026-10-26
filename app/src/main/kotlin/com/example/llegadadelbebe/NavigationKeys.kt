@@ -7,3 +7,4 @@ import kotlinx.serialization.Serializable
 @Serializable data object NavInventory : NavKey
 @Serializable data object NavConsumables : NavKey
 @Serializable data object NavSettings : NavKey
+@Serializable data object NavFamilySynastry : NavKey
