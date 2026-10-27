@@ -1,5 +1,6 @@
 package com.example.llegadadelbebe.presentation.inventory
 
+import com.example.llegadadelbebe.core.ui.FormattedMarkdownText
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -712,7 +713,7 @@ fun ConfirmGeminiProductDialog(
                                 color = MaterialTheme.colorScheme.primary
                             )
                             Spacer(modifier = Modifier.height(4.dp))
-                            Text(text = geminiOpinion, style = MaterialTheme.typography.bodySmall)
+                            FormattedMarkdownText(text = geminiOpinion, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }

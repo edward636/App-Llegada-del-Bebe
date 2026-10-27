@@ -56,7 +56,7 @@ class BcvExchangeRateClient(private val context: Context) {
                 connectTimeout = 6000
                 readTimeout = 6000
                 setRequestProperty("Accept", "application/json")
-                setRequestProperty("User-Agent", "LlegadaDelBebe-App/1.3.0")
+                setRequestProperty("User-Agent", "LlegadaDelBebe-App/1.3.1")
             }
 
             if (conn.responseCode == HttpURLConnection.HTTP_OK) {

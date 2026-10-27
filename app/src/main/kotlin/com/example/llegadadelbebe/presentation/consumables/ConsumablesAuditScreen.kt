@@ -50,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.llegadadelbebe.core.ui.FormattedMarkdownText
 import com.example.llegadadelbebe.core.storage.LocalPreferences
 import com.example.llegadadelbebe.domain.model.BabyProduct
 import com.example.llegadadelbebe.domain.model.ConsumableCategoryAudit
@@ -237,7 +238,11 @@ fun ConsumablesAuditScreen(
                     Spacer(modifier = Modifier.height(8.dp))
 
                     if (advice.isNotBlank()) {
-                        Text(text = advice, style = MaterialTheme.typography.bodyMedium)
+                        FormattedMarkdownText(
+                            text = advice,
+                            style = MaterialTheme.typography.bodyMedium,
+                            lineHeight = 20.sp
+                        )
                         Spacer(modifier = Modifier.height(12.dp))
                     } else {
                         Text(

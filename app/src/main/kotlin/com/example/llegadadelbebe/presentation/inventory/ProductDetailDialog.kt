@@ -1,5 +1,6 @@
 package com.example.llegadadelbebe.presentation.inventory
 
+import com.example.llegadadelbebe.core.ui.FormattedMarkdownText
 import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.foundation.BorderStroke
@@ -435,7 +436,7 @@ fun ProductDetailDialog(
                                 color = MaterialTheme.colorScheme.primary
                             )
                             if (product.geminiOpinion.isNotBlank()) {
-                                Text(
+                                FormattedMarkdownText(
                                     text = product.geminiOpinion,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurface

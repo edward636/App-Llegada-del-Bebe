@@ -1,5 +1,6 @@
 package com.example.llegadadelbebe.presentation.zodiac
 
+import com.example.llegadadelbebe.core.ui.FormattedMarkdownText
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -747,7 +748,7 @@ private fun FamilyTriadAndGeminiTabContent(
                     color = MaterialTheme.colorScheme.surface,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
+                    FormattedMarkdownText(
                         text = geminiReading,
                         modifier = Modifier.padding(16.dp),
                         style = MaterialTheme.typography.bodyMedium,

@@ -44,7 +44,7 @@ class FarmatodoApiClient {
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json")
                 setRequestProperty("Accept", "application/json")
-                setRequestProperty("User-Agent", "LlegadaDelBebe-ShoppingRadar/1.3.0")
+                setRequestProperty("User-Agent", "LlegadaDelBebe-ShoppingRadar/1.3.1")
             }
 
             val encodedParams = "query=${URLEncoder.encode(trimmed, "UTF-8")}&hitsPerPage=$limit"
