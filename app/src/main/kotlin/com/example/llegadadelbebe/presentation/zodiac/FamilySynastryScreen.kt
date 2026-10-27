@@ -50,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -94,39 +95,65 @@ fun FamilySynastryScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Button(
-                    onClick = onBack,
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                ) {
-                    Text("←", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
+            Surface(
+                onClick = onBack,
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(42.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
                     Text(
-                        text = "Sinastría y Fusión Astral ✨",
-                        fontSize = 18.sp,
+                        text = "←",
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
-                    Text(
-                        text = "Papá Edward • Mamá Britney • Bebé",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
-            Button(
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Sinastría y Fusión Astral ✨",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "Papá Edward • Mamá Britney • Bebé",
+                    fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(modifier = Modifier.width(8.dp))
+
+            Surface(
                 onClick = { showEditDialog = true },
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                color = MaterialTheme.colorScheme.surfaceVariant,
+                modifier = Modifier.height(42.dp)
             ) {
-                Text("⚙️ Ajustar", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Medium)
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("⚙️", fontSize = 14.sp)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Ajustar",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
 
@@ -214,22 +241,35 @@ private fun FamilySummaryBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceAround
+                .padding(horizontal = 8.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            MiniAstralBadge("💙 Papá Edward", "${father.sun.sign.symbol} ☀️", "${father.moon.sign.symbol} 🌙", "${father.ascendant.sign.symbol} ⬆️")
-            MiniAstralBadge("🌸 Mamá Britney", "${mother.sun.sign.symbol} ☀️", "${mother.moon.sign.symbol} 🌙", "${mother.ascendant.sign.symbol} ⬆️")
-            MiniAstralBadge("👶 Bebé ${baby.babyName}", "${baby.sun.sign.symbol} ☀️", "${baby.projectedMoon.sign.symbol} 🌙", "${baby.simulatedAscendant.sign.symbol} ⬆️")
+            MiniAstralBadge("💙 Papá Edward", "${father.sun.sign.symbol} ☀️", "${father.moon.sign.symbol} 🌙", "${father.ascendant.sign.symbol} ⬆️", Modifier.weight(1f))
+            MiniAstralBadge("🌸 Mamá Britney", "${mother.sun.sign.symbol} ☀️", "${mother.moon.sign.symbol} 🌙", "${mother.ascendant.sign.symbol} ⬆️", Modifier.weight(1f))
+            MiniAstralBadge("👶 Bebé ${baby.babyName}", "${baby.sun.sign.symbol} ☀️", "${baby.projectedMoon.sign.symbol} 🌙", "${baby.simulatedAscendant.sign.symbol} ⬆️", Modifier.weight(1f))
         }
     }
 }
 
 @Composable
-private fun MiniAstralBadge(role: String, sun: String, moon: String, asc: String) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(text = role, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+private fun MiniAstralBadge(role: String, sun: String, moon: String, asc: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = role,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
         Spacer(modifier = Modifier.height(2.dp))
-        Text(text = "$sun $moon $asc", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+        Text(
+            text = "$sun $moon $asc",
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false
+        )
     }
 }
 
@@ -455,16 +495,16 @@ private fun FatherBabyFusionTabContent(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ShiftChip("🌅 Mañana", selected = simulatedHour in 6..11) { onSelectHour(9) }
-                ShiftChip("☀️ Tarde", selected = simulatedHour in 12..17) { onSelectHour(14) }
+                ShiftChip("🌅 Mañana", selected = simulatedHour in 6..11, modifier = Modifier.weight(1f)) { onSelectHour(9) }
+                ShiftChip("☀️ Tarde", selected = simulatedHour in 12..17, modifier = Modifier.weight(1f)) { onSelectHour(14) }
             }
             Spacer(modifier = Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ShiftChip("🌆 Atardecer", selected = simulatedHour in 18..23) { onSelectHour(19) }
-                ShiftChip("🌙 Madrugada", selected = simulatedHour in 0..5) { onSelectHour(3) }
+                ShiftChip("🌆 Atardecer", selected = simulatedHour in 18..23, modifier = Modifier.weight(1f)) { onSelectHour(19) }
+                ShiftChip("🌙 Madrugada", selected = simulatedHour in 0..5, modifier = Modifier.weight(1f)) { onSelectHour(3) }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -513,11 +553,16 @@ private fun FatherBabyFusionTabContent(
 }
 
 @Composable
-private fun ShiftChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun ShiftChip(label: String, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
     FilterChip(
         selected = selected,
         onClick = onClick,
-        label = { Text(label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp) }
+        modifier = modifier,
+        label = {
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text(label, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, fontSize = 12.sp)
+            }
+        }
     )
 }
 
@@ -525,8 +570,8 @@ private fun ShiftChip(label: String, selected: Boolean, onClick: () -> Unit) {
 private fun MoonDayCard(day: DayMoonProjection) {
     Card(
         modifier = Modifier
-            .width(160.dp)
-            .height(170.dp),
+            .width(164.dp)
+            .height(180.dp),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (day.isFppDay) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface
@@ -568,14 +613,27 @@ private fun MoonDayCard(day: DayMoonProjection) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text(text = day.moonPhaseEmoji, fontSize = 24.sp)
                 Spacer(modifier = Modifier.height(2.dp))
-                Text(text = day.moonSign.fullDisplayName, fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                Text(text = day.moonPhaseName, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    text = day.moonSign.fullDisplayName,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = day.moonPhaseName,
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
 
             Text(
                 text = day.highlightReason,
                 fontSize = 10.sp,
                 maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -638,11 +696,11 @@ private fun FamilyTriadAndGeminiTabContent(
             )
 
             Spacer(modifier = Modifier.height(4.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceAround) {
-                ElementPill("💨 Aire", elementalBalance.airPoints, Color(0xFF1976D2))
-                ElementPill("🌿 Tierra", elementalBalance.earthPoints, Color(0xFF388E3C))
-                ElementPill("🔥 Fuego", elementalBalance.firePoints, Color(0xFFE64A19))
-                ElementPill("💧 Agua", elementalBalance.waterPoints, Color(0xFF0097A7))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                ElementPill("💨 Aire", elementalBalance.airPoints, Color(0xFF1976D2), Modifier.weight(1f))
+                ElementPill("🌿 Tierra", elementalBalance.earthPoints, Color(0xFF388E3C), Modifier.weight(1f))
+                ElementPill("🔥 Fuego", elementalBalance.firePoints, Color(0xFFE64A19), Modifier.weight(1f))
+                ElementPill("💧 Agua", elementalBalance.waterPoints, Color(0xFF0097A7), Modifier.weight(1f))
             }
         }
     }
@@ -702,18 +760,26 @@ private fun FamilyTriadAndGeminiTabContent(
 }
 
 @Composable
-private fun ElementPill(name: String, points: Int, color: Color) {
+private fun ElementPill(name: String, points: Int, color: Color, modifier: Modifier = Modifier) {
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = color.copy(alpha = 0.15f),
-        modifier = Modifier.padding(2.dp)
+        modifier = modifier
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(text = name, fontWeight = FontWeight.Bold, fontSize = 12.sp, color = color)
-            Text(text = "$points pts", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = color)
+            Text(
+                text = name,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                color = color,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(text = "$points pts", fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = color)
         }
     }
 }

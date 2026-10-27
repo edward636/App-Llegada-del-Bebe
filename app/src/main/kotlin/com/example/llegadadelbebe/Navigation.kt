@@ -30,13 +30,15 @@ import com.example.llegadadelbebe.presentation.home.HomeViewModel
 import com.example.llegadadelbebe.presentation.home.OtaUpdateDialog
 import com.example.llegadadelbebe.presentation.inventory.InventoryScreen
 import com.example.llegadadelbebe.presentation.inventory.InventoryViewModel
+import com.example.llegadadelbebe.presentation.radar.ShoppingRadarScreen
+import com.example.llegadadelbebe.presentation.radar.ShoppingRadarViewModel
 import com.example.llegadadelbebe.presentation.settings.SettingsScreen
 import com.example.llegadadelbebe.presentation.zodiac.FamilySynastryScreen
 import com.example.llegadadelbebe.presentation.zodiac.FamilySynastryViewModel
 import kotlinx.coroutines.launch
 
-const val APP_VERSION_CODE = 15
-const val APP_VERSION_NAME = "1.2.1"
+const val APP_VERSION_CODE = 16
+const val APP_VERSION_NAME = "1.3.0"
 
 @Composable
 fun MainNavigation() {
@@ -120,6 +122,13 @@ fun MainNavigation() {
         FamilySynastryViewModel(localPreferences)
     }
 
+    val radarViewModel: ShoppingRadarViewModel = viewModel {
+        ShoppingRadarViewModel(
+            application = context.applicationContext as android.app.Application,
+            repository = sharedRepository
+        )
+    }
+
     NavDisplay(
         backStack = backStack,
         onBack = { backStack.removeLastOrNull() },
@@ -131,6 +140,7 @@ fun MainNavigation() {
                     onNavigateToInventory = { backStack.add(NavInventory) },
                     onNavigateToConsumables = { backStack.add(NavConsumables) },
                     onNavigateToSynastry = { backStack.add(NavFamilySynastry) },
+                    onNavigateToRadar = { backStack.add(NavShoppingRadar) },
                     onNavigateToSettings = { backStack.add(NavSettings) }
                 )
             }
@@ -157,6 +167,13 @@ fun MainNavigation() {
                 FamilySynastryScreen(
                     viewModel = synastryViewModel,
                     apiKey = geminiApiKeyState,
+                    onBack = { backStack.removeLastOrNull() }
+                )
+            }
+            entry<NavShoppingRadar> {
+                ShoppingRadarScreen(
+                    viewModel = radarViewModel,
+                    geminiApiKey = geminiApiKeyState,
                     onBack = { backStack.removeLastOrNull() }
                 )
             }

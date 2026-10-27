@@ -183,6 +183,188 @@ class LocalPreferences(context: Context) {
             .apply()
     }
 
+    fun getLastBcvRate(): Double {
+        val raw = prefs.getString(KEY_LAST_BCV_RATE, "886.22") ?: "886.22"
+        return raw.toDoubleOrNull() ?: 886.22
+    }
+
+    fun getLastBcvDate(): String = prefs.getString(KEY_LAST_BCV_DATE, "") ?: ""
+
+    fun saveLastBcvRate(rate: Double, dateStr: String) {
+        prefs.edit()
+            .putString(KEY_LAST_BCV_RATE, rate.toString())
+            .putString(KEY_LAST_BCV_DATE, dateStr)
+            .apply()
+    }
+
+    fun saveRadarQuotesCache(quotes: List<com.example.llegadadelbebe.domain.model.ProductPriceQuote>) {
+        try {
+            val array = JSONArray()
+            for (q in quotes) {
+                val obj = JSONObject().apply {
+                    put("id", q.id)
+                    put("productName", q.productName)
+                    put("brand", q.brand)
+                    put("category", q.category.name)
+                    put("stageSize", q.stageSize)
+                    put("packageCount", q.packageCount)
+                    put("unitsPerPackage", q.unitsPerPackage)
+                    put("storeName", q.storeName)
+                    put("storeAddress", q.storeAddress)
+                    put("latitude", q.latitude)
+                    put("longitude", q.longitude)
+                    put("priceAmount", q.priceAmount)
+                    put("priceCurrency", q.priceCurrency.name)
+                    put("bcvRateApplied", q.bcvRateApplied)
+                    put("priceUsdEquivalent", q.priceUsdEquivalent)
+                    put("unitPriceUsd", q.unitPriceUsd)
+                    put("quotedAt", q.quotedAt)
+                    put("registeredBy", q.registeredBy)
+                    put("photoBase64", q.photoBase64)
+                    put("notes", q.notes)
+                    put("barcode", q.barcode)
+                    put("googleMapsName", q.googleMapsName)
+                    q.farmatodoBenchmark?.let { f ->
+                        val fObj = JSONObject().apply {
+                            put("id", f.id)
+                            put("name", f.name)
+                            put("brand", f.brand)
+                            put("fullPriceVes", f.fullPriceVes)
+                            put("offerPriceVes", f.offerPriceVes)
+                            put("priceUsd", f.priceUsd)
+                            put("offerPriceUsd", f.offerPriceUsd)
+                            put("mediaImageUrl", f.mediaImageUrl)
+                            put("urlSlug", f.urlSlug)
+                            put("barcode", f.barcode)
+                        }
+                        put("farmatodo", fObj)
+                    }
+                }
+                array.put(obj)
+            }
+            prefs.edit().putString(KEY_RADAR_QUOTES_CACHE, array.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun getRadarQuotesCache(): List<com.example.llegadadelbebe.domain.model.ProductPriceQuote> {
+        val raw = prefs.getString(KEY_RADAR_QUOTES_CACHE, null) ?: return emptyList()
+        return try {
+            val array = JSONArray(raw)
+            val list = mutableListOf<com.example.llegadadelbebe.domain.model.ProductPriceQuote>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val catName = obj.optString("category", ProductCategory.DIAPERS.name)
+                val currName = obj.optString("priceCurrency", com.example.llegadadelbebe.domain.model.CurrencyType.USD.name)
+                val farmatodoObj = obj.optJSONObject("farmatodo")
+                val benchmark = farmatodoObj?.let { f ->
+                    com.example.llegadadelbebe.domain.model.FarmatodoProductBenchmark(
+                        id = f.optString("id"),
+                        name = f.optString("name"),
+                        brand = f.optString("brand"),
+                        fullPriceVes = f.optDouble("fullPriceVes", 0.0),
+                        offerPriceVes = f.optDouble("offerPriceVes", 0.0),
+                        priceUsd = f.optDouble("priceUsd", 0.0),
+                        offerPriceUsd = f.optDouble("offerPriceUsd", 0.0),
+                        mediaImageUrl = f.optString("mediaImageUrl"),
+                        urlSlug = f.optString("urlSlug"),
+                        barcode = f.optString("barcode")
+                    )
+                }
+
+                list.add(
+                    com.example.llegadadelbebe.domain.model.ProductPriceQuote(
+                        id = obj.optString("id"),
+                        productName = obj.optString("productName"),
+                        brand = obj.optString("brand"),
+                        category = ProductCategory.entries.find { it.name == catName } ?: ProductCategory.DIAPERS,
+                        stageSize = obj.optString("stageSize"),
+                        packageCount = obj.optInt("packageCount", 1),
+                        unitsPerPackage = obj.optInt("unitsPerPackage", 1),
+                        storeName = obj.optString("storeName"),
+                        storeAddress = obj.optString("storeAddress"),
+                        latitude = obj.optDouble("latitude", 0.0),
+                        longitude = obj.optDouble("longitude", 0.0),
+                        priceAmount = obj.optDouble("priceAmount", 0.0),
+                        priceCurrency = com.example.llegadadelbebe.domain.model.CurrencyType.entries.find { it.name == currName } ?: com.example.llegadadelbebe.domain.model.CurrencyType.USD,
+                        bcvRateApplied = obj.optDouble("bcvRateApplied", 1.0),
+                        priceUsdEquivalent = obj.optDouble("priceUsdEquivalent", 0.0),
+                        unitPriceUsd = obj.optDouble("unitPriceUsd", 0.0),
+                        quotedAt = obj.optString("quotedAt"),
+                        registeredBy = obj.optString("registeredBy"),
+                        photoBase64 = obj.optString("photoBase64"),
+                        notes = obj.optString("notes"),
+                        barcode = obj.optString("barcode"),
+                        googleMapsName = obj.optString("googleMapsName", ""),
+                        farmatodoBenchmark = benchmark
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun getKnownStoreLocations(): List<com.example.llegadadelbebe.domain.model.KnownStoreLocation> {
+        val raw = prefs.getString(KEY_KNOWN_STORES_CACHE, null) ?: return emptyList()
+        return try {
+            val array = JSONArray(raw)
+            val list = mutableListOf<com.example.llegadadelbebe.domain.model.KnownStoreLocation>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                list.add(
+                    com.example.llegadadelbebe.domain.model.KnownStoreLocation(
+                        id = obj.optString("id"),
+                        name = obj.optString("name"),
+                        address = obj.optString("address"),
+                        latitude = obj.optDouble("latitude"),
+                        longitude = obj.optDouble("longitude"),
+                        visitCount = obj.optInt("visitCount", 1),
+                        lastVisitedAt = obj.optString("lastVisitedAt"),
+                        googleMapsName = obj.optString("googleMapsName", ""),
+                        isUserConfirmed = obj.optBoolean("isUserConfirmed", true)
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun saveAllKnownStores(stores: List<com.example.llegadadelbebe.domain.model.KnownStoreLocation>) {
+        try {
+            val array = JSONArray()
+            for (s in stores) {
+                val obj = JSONObject().apply {
+                    put("id", s.id)
+                    put("name", s.name)
+                    put("address", s.address)
+                    put("latitude", s.latitude)
+                    put("longitude", s.longitude)
+                    put("visitCount", s.visitCount)
+                    put("lastVisitedAt", s.lastVisitedAt)
+                    put("googleMapsName", s.googleMapsName)
+                    put("isUserConfirmed", s.isUserConfirmed)
+                }
+                array.put(obj)
+            }
+            prefs.edit().putString(KEY_KNOWN_STORES_CACHE, array.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun saveKnownStoreLocation(store: com.example.llegadadelbebe.domain.model.KnownStoreLocation) {
+        val current = getKnownStoreLocations().toMutableList()
+        val index = current.indexOfFirst { it.name.equals(store.name, ignoreCase = true) || (Math.abs(it.latitude - store.latitude) < 0.0005 && Math.abs(it.longitude - store.longitude) < 0.0005) }
+        if (index >= 0) {
+            val existing = current[index]
+            current[index] = store.copy(id = existing.id, visitCount = existing.visitCount + 1)
+        } else {
+            current.add(store)
+        }
+        saveAllKnownStores(current)
+    }
+
     companion object {
         private const val PREFS_NAME = "llegada_del_bebe_prefs"
         private const val KEY_BABY_NAME = "baby_name"
@@ -194,5 +376,9 @@ class LocalPreferences(context: Context) {
         private const val KEY_FATHER_BIRTH_MINUTES = "father_birth_minutes"
         private const val KEY_MOTHER_BIRTH_EPOCH = "mother_birth_epoch"
         private const val KEY_MOTHER_BIRTH_MINUTES = "mother_birth_minutes"
+        private const val KEY_LAST_BCV_RATE = "last_bcv_rate"
+        private const val KEY_LAST_BCV_DATE = "last_bcv_date"
+        private const val KEY_RADAR_QUOTES_CACHE = "radar_quotes_cache_json"
+        private const val KEY_KNOWN_STORES_CACHE = "known_stores_cache_json"
     }
 }

@@ -483,6 +483,95 @@ class GeminiClient(
         }
     }
 
+    /**
+     * Analiza una fotografía de un producto en un anaquel de tienda junto con su hablador o etiqueta de precio.
+     * Extrae de forma estructurada el nombre del producto, marca, categoría, unidades, precio numérico,
+     * moneda del comercio (USD o Bolívares) y sugerencia del nombre de la tienda si es visible.
+     */
+    suspend fun extractPriceQuoteFromImage(
+        base64Image: String,
+        mimeType: String = "image/jpeg",
+        apiKey: String
+    ): Result<ParsedPriceQuote> = withContext(Dispatchers.IO) {
+        try {
+            val promptText = """
+                Eres un asistente de compras de supermercado y farmacias en Venezuela para Edward y Britney.
+                Analiza con precisión milimétrica la imagen donde se aprecia un producto para bebé (pañales, toallas, fórmula, etc.) y/o el hablador de precio en el anaquel o etiqueta.
+
+                Debes extraer:
+                1. "nombre_producto": Nombre claro del producto (ej: "Pañales Huggies Active Sec", "Fórmula Enfamil 1", "Toallitas Babysec").
+                2. "marca": Marca (ej: "Huggies", "Pampers", "Johnson's", "WaterWipes", "Enfamil").
+                3. "categoria": Una de: CLOTHING, DIAPERS, WIPES_HYGIENE, FEEDING, CRIB_SLEEP, TRANSPORT, HEALTH, HOSPITAL_BAG.
+                4. "talla_etapa": Talla si aplica (ej: "RN", "P", "M", "G", "XG", "0-3M").
+                5. "paquetes": Número de paquetes (entero, por defecto 1).
+                6. "unidades_por_paquete": Cantidad de unidades dentro del paquete (ej: 32 pañales, 80 toallitas, 400g fórmula).
+                7. "monto_precio": Valor numérico del precio (ej: 12.50, 480.00). Si hay coma decimal, conviértela a número con punto. Si hay precio en Bs y en $, extrae el precio en $ preferentemente o el principal.
+                8. "moneda_precio": "USD" si el precio está en dólares ('$', 'USD', 'REF') o "VES" si está en bolívares ('Bs.', 'Bs', 'VES').
+                9. "tienda_sugerida": Nombre de la tienda si es identificable por el hablador o logo (ej: "Farmatodo", "Locatel", "Gama", "Plaza's", "Makro") o "".
+                10. "codigo_barra": Dígitos del código de barra si son legibles, o "".
+                11. "observaciones": Notas breves de la oferta o presentación especial (ej: "Promoción 2x1", "Precio de afiliado").
+
+                Responde ÚNICAMENTE un objeto JSON válido con estas claves exactas.
+            """.trimIndent()
+
+            val requestBody = JSONObject().apply {
+                val contents = JSONArray().apply {
+                    put(JSONObject().apply {
+                        val parts = JSONArray().apply {
+                            put(JSONObject().put("text", promptText))
+                            put(JSONObject().apply {
+                                put("inline_data", JSONObject().apply {
+                                    put("mime_type", mimeType)
+                                    put("data", base64Image)
+                                })
+                            })
+                        }
+                        put("parts", parts)
+                    })
+                }
+                put("contents", contents)
+
+                put("generationConfig", JSONObject().apply {
+                    put("temperature", 0.1)
+                    put("response_mime_type", "application/json")
+                })
+            }
+
+            val responseString = executePost(requestBody.toString(), apiKey)
+            val root = JSONObject(responseString)
+            val candidates = root.optJSONArray("candidates")
+                ?: throw RuntimeException("Respuesta sin candidatos de Gemini")
+            val firstCandidate = candidates.getJSONObject(0)
+            val content = firstCandidate.getJSONObject("content")
+            val parts = content.getJSONArray("parts")
+            val text = parts.getJSONObject(0).getString("text")
+
+            val json = JSONObject(text.trim())
+
+            val rawCategory = json.optString("categoria", "DIAPERS")
+            val cat = ProductCategory.entries.find { it.name.equals(rawCategory, ignoreCase = true) }
+                ?: ProductCategory.DIAPERS
+
+            val quote = ParsedPriceQuote(
+                productName = json.optString("nombre_producto", "Producto sin nombre").trim(),
+                brand = json.optString("marca", "").trim(),
+                category = cat,
+                stageSize = json.optString("talla_etapa", "").trim(),
+                packageCount = json.optInt("paquetes", 1).coerceAtLeast(1),
+                unitsPerPackage = json.optInt("unidades_por_paquete", 1).coerceAtLeast(1),
+                priceAmount = json.optDouble("monto_precio", 0.0),
+                priceCurrency = if (json.optString("moneda_precio", "USD").contains("VES", ignoreCase = true) || json.optString("moneda_precio").contains("BS", ignoreCase = true)) "VES" else "USD",
+                storeNameHint = json.optString("tienda_sugerida", "").trim(),
+                barcode = json.optString("codigo_barra", "").trim(),
+                notes = json.optString("observaciones", "").trim()
+            )
+
+            Result.success(quote)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     private fun executePost(jsonPayload: String, apiKey: String): String {
         var lastException: Exception? = null
 
@@ -532,3 +621,17 @@ class GeminiClient(
         throw lastException ?: RuntimeException("No se pudo conectar con ningún modelo de Gemini.")
     }
 }
+
+data class ParsedPriceQuote(
+    val productName: String,
+    val brand: String,
+    val category: ProductCategory,
+    val stageSize: String,
+    val packageCount: Int,
+    val unitsPerPackage: Int,
+    val priceAmount: Double,
+    val priceCurrency: String,
+    val storeNameHint: String,
+    val barcode: String,
+    val notes: String
+)

@@ -11,14 +11,15 @@ android {
     applicationId = "com.example.llegadadelbebe"
     minSdk = 26
     targetSdk = 36
-    versionCode = 15
-    versionName = "1.2.1"
+    versionCode = 16
+    versionName = "1.3.0"
   }
 
   buildTypes {
     release {
       isMinifyEnabled = false
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+      signingConfig = signingConfigs.getByName("debug")
     }
   }
   compileOptions {
