@@ -56,6 +56,7 @@ import com.example.llegadadelbebe.APP_VERSION_NAME
 import com.example.llegadadelbebe.core.security.SecureConfig
 import com.example.llegadadelbebe.core.update.OtaInstallOutcome
 import com.example.llegadadelbebe.core.update.OtaUpdateManager
+import com.example.llegadadelbebe.core.util.OemOptimizationHelper
 import com.example.llegadadelbebe.core.util.PregnancyCalculator
 import com.example.llegadadelbebe.core.util.ZodiacPredictor
 import kotlinx.coroutines.launch
@@ -541,7 +542,58 @@ fun SettingsScreen(
                 }
             }
 
-            // 5. Guardar Ajustes
+            // 5. Optimización de Batería y Sistema (HyperOS / ColorOS)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "⚡ Optimización de Sistema (HyperOS / ColorOS)",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Dispositivo: ${OemOptimizationHelper.detectedOemName}.\n" +
+                               "Para que las alarmas de vitaminas suenen con total precisión y nunca sean cerradas en segundo plano por el sistema, activa el inicio automático y batería sin restricciones.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                try {
+                                    context.startActivity(OemOptimizationHelper.createIgnoreBatteryOptimizationIntent(context))
+                                } catch (_: Exception) {}
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Batería Sin Restricción", fontSize = 11.sp, maxLines = 1)
+                        }
+
+                        Button(
+                            onClick = {
+                                OemOptimizationHelper.openOemAutostartSettings(context)
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                        ) {
+                            Text("Inicio Automático", fontSize = 11.sp, maxLines = 1)
+                        }
+                    }
+                }
+            }
+
+            // 6. Guardar Ajustes
             Button(
                 onClick = {
                     onSaveBabySettings(name, lmpDate, selectedUser)

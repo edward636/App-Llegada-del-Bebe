@@ -25,7 +25,7 @@ object NotificationHelper {
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
                 ?: return
 
-            // Canal 1: Medicamentos y Vitaminas
+            // Canal 1: Medicamentos y Vitaminas (Optimizado HyperOS / ColorOS)
             val medChannel = NotificationChannel(
                 CHANNEL_MEDICATIONS,
                 "Medicamentos y Vitaminas Prenatales",
@@ -33,9 +33,15 @@ object NotificationHelper {
             ).apply {
                 description = "Recordatorios de tomas médicas y vitaminas duales para Britney y Edward"
                 enableVibration(true)
+                vibrationPattern = longArrayOf(0, 300, 200, 300)
+                enableLights(true)
+                lightColor = android.graphics.Color.MAGENTA
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                setShowBadge(true)
+                setBypassDnd(true)
             }
 
-            // Canal 2: Actualizaciones OTA
+            // Canal 2: Actualizaciones OTA (Optimizado HyperOS / ColorOS)
             val otaChannel = NotificationChannel(
                 CHANNEL_OTA_UPDATES,
                 "Actualizaciones de la App",
@@ -43,6 +49,10 @@ object NotificationHelper {
             ).apply {
                 description = "Avisos de nuevas versiones disponibles para mantener la app actualizada"
                 enableVibration(true)
+                enableLights(true)
+                lightColor = android.graphics.Color.CYAN
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                setShowBadge(true)
             }
 
             // Canal 3: Acompañamiento del Bebé e Inactividad
@@ -53,6 +63,8 @@ object NotificationHelper {
             ).apply {
                 description = "Notificaciones cariñosas sobre el crecimiento del bebé e hitos de preparación"
                 enableVibration(true)
+                setShowBadge(true)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
 
             notificationManager.createNotificationChannels(listOf(medChannel, otaChannel, engagementChannel))
