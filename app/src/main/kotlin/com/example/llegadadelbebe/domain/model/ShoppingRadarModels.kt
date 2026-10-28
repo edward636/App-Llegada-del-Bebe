@@ -182,22 +182,24 @@ data class ProductBudgetLine(
     val category: ProductCategory,
     val isPurchased: Boolean,
     val quantity: Int,
-    val unitPriceUsd: Double,
-    val totalPriceUsd: Double,
-    val sourcePriceLabel: String, // ej: "Mercafácil ($10.50/pqte • $0.292/ud)", "Farmatodo Oficial ($11.33)", "Estimado"
+    val unitPriceUsd: Double?,
+    val totalPriceUsd: Double?,
+    val sourcePriceLabel: String, // ej: "Mercafácil ($10.50/pqte • $0.292/ud)", "Farmatodo Oficial ($11.33)", "Cargado por usuario", "Sin precio"
     val packageCount: Int = 1,
     val unitsPerPackage: Int = 1,
     val isPackageProduct: Boolean = false,
     val quantityDisplayLabel: String = ""
 ) {
-    val formattedTotalUsd: String get() = String.format(Locale.US, "$%.2f", totalPriceUsd)
-    fun formattedTotalVes(bcvRate: Double): String = String.format(Locale.US, "Bs. %.2f", totalPriceUsd * bcvRate)
+    val hasPrice: Boolean get() = totalPriceUsd != null && totalPriceUsd > 0.0
+    val formattedTotalUsd: String get() = if (hasPrice) String.format(Locale.US, "$%.2f", totalPriceUsd!!) else "--"
+    fun formattedTotalVes(bcvRate: Double): String = if (hasPrice) String.format(Locale.US, "Bs. %.2f", totalPriceUsd!! * bcvRate) else "Sin precio"
 }
 
 /**
  * Presupuesto Integral Familiar:
  * Cuánto se ha gastado en lo que ya tenemos y cuánto falta por gastar para completar el 100%
  * de la llegada del bebé, cruzando precios de tiendas registradas con GPS y el catálogo de Farmatodo.
+ * NUNCA inventa precios de categorías: solo computa productos con precios reales confirmados.
  */
 data class FamilyBudgetReport(
     val totalSpentUsd: Double,
@@ -205,7 +207,9 @@ data class FamilyBudgetReport(
     val bcvRate: Double,
     val purchasedCount: Int,
     val pendingCount: Int,
-    val lines: List<ProductBudgetLine>
+    val lines: List<ProductBudgetLine>,
+    val pricedCount: Int = 0,
+    val unpricedCount: Int = 0
 ) {
     val totalProjectedUsd: Double get() = totalSpentUsd + totalPendingUsd
     val totalSpentVes: Double get() = totalSpentUsd * bcvRate

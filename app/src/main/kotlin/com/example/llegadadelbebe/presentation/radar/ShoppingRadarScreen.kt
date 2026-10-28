@@ -82,6 +82,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.llegadadelbebe.core.security.SecureConfig
 import com.example.llegadadelbebe.core.util.BarcodeScannerHelper
 import com.example.llegadadelbebe.core.util.StoreLocationHelper
 import com.example.llegadadelbebe.domain.model.BcvExchangeRate
@@ -123,6 +124,7 @@ fun ShoppingRadarScreen(
 
     var showAddDialog by remember { mutableStateOf(false) }
     var showManualBcvDialog by remember { mutableStateOf(false) }
+    var lineToEditPrice by remember { mutableStateOf<ProductBudgetLine?>(null) }
     var pendingPhotoUri by remember { mutableStateOf<Uri?>(null) }
     var pendingQuoteDraft by remember { mutableStateOf<ProductPriceQuote?>(null) }
     var radarErrorMessage by remember { mutableStateOf("") }
@@ -425,7 +427,10 @@ fun ShoppingRadarScreen(
                         onSearchChange = { viewModel.setSearchQuery(it) },
                         onDeleteQuote = { viewModel.deletePriceQuote(it) }
                     )
-                    1 -> FamilyBudgetTabContent(budgetReport = budgetReport)
+                    1 -> FamilyBudgetTabContent(
+                        budgetReport = budgetReport,
+                        onEditPrice = { lineToEditPrice = it }
+                    )
                     2 -> GpsMemoryTabContent(
                         knownStores = knownStores,
                         onDeleteStore = { viewModel.deleteKnownStore(it) }
@@ -485,6 +490,26 @@ fun ShoppingRadarScreen(
                 )
                 showAddDialog = false
                 pendingQuoteDraft = null
+            }
+        )
+    }
+
+    if (lineToEditPrice != null) {
+        EditProductPriceDialog(
+            line = lineToEditPrice!!,
+            bcvRate = bcvRate.rate,
+            onDismiss = { lineToEditPrice = null },
+            onSearchFarmatodo = { query ->
+                viewModel.searchFarmatodoPrice(query)
+            },
+            onSavePrice = { priceUsd, source ->
+                viewModel.setProductReferencePrice(
+                    productId = lineToEditPrice!!.productId,
+                    priceUsd = priceUsd,
+                    source = source,
+                    googleSheetUrl = SecureConfig.getGoogleSheetUrl()
+                )
+                lineToEditPrice = null
             }
         )
     }
@@ -583,7 +608,10 @@ fun RadarQuotesTabContent(
 // -------------------------------------------------------------------------
 
 @Composable
-fun FamilyBudgetTabContent(budgetReport: FamilyBudgetReport) {
+fun FamilyBudgetTabContent(
+    budgetReport: FamilyBudgetReport,
+    onEditPrice: (ProductBudgetLine) -> Unit
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -645,6 +673,22 @@ fun FamilyBudgetTabContent(budgetReport: FamilyBudgetReport) {
                     }
                 }
 
+                // Resumen de artículos con precio confirmado vs sin precio
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "ℹ️ ${budgetReport.pricedCount} de ${budgetReport.lines.size} artículos con precio confirmado" +
+                            if (budgetReport.unpricedCount > 0) " (${budgetReport.unpricedCount} sin precio de referencia)" else "",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+
                 // Barra de Progreso
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -683,7 +727,11 @@ fun FamilyBudgetTabContent(budgetReport: FamilyBudgetReport) {
         )
 
         budgetReport.lines.forEach { line ->
-            BudgetLineCard(line = line, bcvRate = budgetReport.bcvRate)
+            BudgetLineCard(
+                line = line,
+                bcvRate = budgetReport.bcvRate,
+                onEditPrice = { onEditPrice(line) }
+            )
         }
 
         Spacer(modifier = Modifier.height(30.dp))
@@ -691,9 +739,15 @@ fun FamilyBudgetTabContent(budgetReport: FamilyBudgetReport) {
 }
 
 @Composable
-fun BudgetLineCard(line: ProductBudgetLine, bcvRate: Double) {
+fun BudgetLineCard(
+    line: ProductBudgetLine,
+    bcvRate: Double,
+    onEditPrice: () -> Unit
+) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onEditPrice() },
         shape = RoundedCornerShape(12.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
@@ -737,17 +791,235 @@ fun BudgetLineCard(line: ProductBudgetLine, bcvRate: Double) {
             }
 
             Column(horizontalAlignment = Alignment.End) {
+                if (line.hasPrice) {
+                    Text(
+                        text = line.formattedTotalUsd,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 15.sp,
+                        color = if (line.isPurchased) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = line.formattedTotalVes(bcvRate),
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        onClick = onEditPrice
+                    ) {
+                        Text(
+                            text = "+ Añadir Precio",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Diálogo para fijar o modificar el precio de referencia de un producto,
+ * o buscarlo en vivo en Farmatodo Venezuela.
+ */
+@Composable
+fun EditProductPriceDialog(
+    line: ProductBudgetLine,
+    bcvRate: Double,
+    onDismiss: () -> Unit,
+    onSearchFarmatodo: suspend (String) -> FarmatodoProductBenchmark?,
+    onSavePrice: (Double?, String) -> Unit
+) {
+    val coroutineScope = rememberCoroutineScope()
+    var priceInputUsd by remember {
+        mutableStateOf(if (line.hasPrice && line.unitPriceUsd != null) String.format(Locale.US, "%.2f", line.unitPriceUsd) else "")
+    }
+    var priceInputVes by remember {
+        mutableStateOf(if (line.hasPrice && line.unitPriceUsd != null) String.format(Locale.US, "%.2f", line.unitPriceUsd * bcvRate) else "")
+    }
+    var selectedSource by remember {
+        mutableStateOf(if (line.hasPrice) line.sourcePriceLabel else "Cargado por usuario")
+    }
+
+    var isSearchingFarmatodo by remember { mutableStateOf(false) }
+    var farmatodoMatch by remember { mutableStateOf<FarmatodoProductBenchmark?>(null) }
+    var farmatodoSearchMessage by remember { mutableStateOf("") }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 Text(
-                    text = line.formattedTotalUsd,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp,
-                    color = if (line.isPurchased) Color(0xFF2E7D32) else MaterialTheme.colorScheme.onSurface
+                    text = "🏷️ Fijar Precio de Referencia",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = line.formattedTotalVes(bcvRate),
-                    fontSize = 10.sp,
+                    text = line.productName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Ingresa el precio real o búscalo en Farmatodo Venezuela. La app nunca inventará un precio si lo dejas en blanco.",
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = priceInputUsd,
+                        onValueChange = { input ->
+                            priceInputUsd = input
+                            val parsed = input.toDoubleOrNull()
+                            if (parsed != null && parsed > 0.0) {
+                                priceInputVes = String.format(Locale.US, "%.2f", parsed * bcvRate)
+                                if (selectedSource.isBlank() || selectedSource == "Sin precio de referencia") {
+                                    selectedSource = "Cargado por usuario"
+                                }
+                            } else if (input.isBlank()) {
+                                priceInputVes = ""
+                            }
+                        },
+                        label = { Text("Precio USD ($)") },
+                        placeholder = { Text("Ej: 15.00") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = priceInputVes,
+                        onValueChange = { input ->
+                            priceInputVes = input
+                            val parsed = input.toDoubleOrNull()
+                            if (parsed != null && parsed > 0.0) {
+                                val usd = parsed / bcvRate
+                                priceInputUsd = String.format(Locale.US, "%.2f", usd)
+                                if (selectedSource.isBlank() || selectedSource == "Sin precio de referencia") {
+                                    selectedSource = "Cargado por usuario"
+                                }
+                            } else if (input.isBlank()) {
+                                priceInputUsd = ""
+                            }
+                        },
+                        label = { Text("Precio Bs. (BCV)") },
+                        placeholder = { Text("Ej: 13200") },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        isSearchingFarmatodo = true
+                        farmatodoSearchMessage = "Consultando catálogo de Farmatodo..."
+                        coroutineScope.launch {
+                            val benchmark = onSearchFarmatodo(line.productName)
+                            isSearchingFarmatodo = false
+                            if (benchmark != null) {
+                                farmatodoMatch = benchmark
+                                farmatodoSearchMessage = ""
+                            } else {
+                                farmatodoSearchMessage = "No se encontraron resultados en Farmatodo para este producto."
+                            }
+                        }
+                    },
+                    enabled = !isSearchingFarmatodo,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    if (isSearchingFarmatodo) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Text("🔍 Buscar Precio en Farmatodo Venezuela", fontSize = 12.sp)
+                }
+
+                if (farmatodoSearchMessage.isNotBlank()) {
+                    Text(
+                        text = farmatodoSearchMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                farmatodoMatch?.let { match ->
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text(
+                                text = "💊 ${match.name}",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            Text(
+                                text = "Precio oficial: $${String.format(Locale.US, "%.2f", match.effectivePriceUsd)} USD (Bs. ${String.format(Locale.US, "%.2f", match.effectivePriceVes)})",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Button(
+                                onClick = {
+                                    val price = match.effectivePriceUsd
+                                    priceInputUsd = String.format(Locale.US, "%.2f", price)
+                                    priceInputVes = String.format(Locale.US, "%.2f", price * bcvRate)
+                                    selectedSource = "Farmatodo Oficial"
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("Usar este precio", fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            onSavePrice(null, "")
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Dejar en blanco", fontSize = 11.sp)
+                    }
+
+                    Button(
+                        onClick = {
+                            val usd = priceInputUsd.toDoubleOrNull()
+                            if (usd != null && usd > 0.0) {
+                                onSavePrice(usd, selectedSource.ifBlank { "Cargado por usuario" })
+                            } else {
+                                onSavePrice(null, "")
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Guardar", fontSize = 12.sp)
+                    }
+                }
             }
         }
     }

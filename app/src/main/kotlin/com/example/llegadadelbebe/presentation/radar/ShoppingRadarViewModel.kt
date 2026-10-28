@@ -344,6 +344,8 @@ class ShoppingRadarViewModel(
         var totalPending = 0.0
         var purchasedCount = 0
         var pendingCount = 0
+        var pricedCount = 0
+        var unpricedCount = 0
 
         for (p in products) {
             val isPurchased = p.status != ProductStatus.PENDING
@@ -367,7 +369,23 @@ class ShoppingRadarViewModel(
                 }
 
             // Determinar costo por paquete y costo por unidad individual
-            val (packagePriceUsd, unitPriceUsd, sourceLabel) = when {
+            // NUNCA INVENTAR PRECIOS: Orden de prioridad estricto:
+            // 1. Precio de referencia fijado en el producto (por usuario o Farmatodo en inventario)
+            // 2. Cotización física en tienda capturada en el Radar
+            // 3. Coincidencia en Farmatodo
+            // 4. Si no tiene precio real: Dejar en BLANCO (null)
+            val (packagePriceUsd: Double?, unitPriceUsd: Double?, sourceLabel: String) = when {
+                p.hasReferencePrice -> {
+                    val pkg = p.referencePriceUsd!!
+                    val unit = if (isPackageProduct && unitsPerPkg > 1) pkg / unitsPerPkg else pkg
+                    val sourceName = p.referencePriceSource.ifBlank { "Precio fijado en Inventario" }
+                    val label = if (isPackageProduct && unitsPerPkg > 1) {
+                        "$sourceName ($${String.format(java.util.Locale.US, "%.2f", pkg)}/pqte • $${String.format(java.util.Locale.US, "%.3f", unit)}/ud)"
+                    } else {
+                        "$sourceName ($${String.format(java.util.Locale.US, "%.2f", pkg)})"
+                    }
+                    Triple(pkg, unit, label)
+                }
                 matchingQuote != null -> {
                     val pkg = matchingQuote.packagePriceUsd
                     val unit = if (isPackageProduct && unitsPerPkg > 1) {
@@ -393,23 +411,13 @@ class ShoppingRadarViewModel(
                     Triple(pkg, unit, label)
                 }
                 else -> {
-                    // Referencias estándar de mercado estimadas en Venezuela
-                    val (defaultPkg, defaultUnit) = when (p.category) {
-                        ProductCategory.DIAPERS -> Pair(10.50, 10.50 / unitsPerPkg)
-                        ProductCategory.WIPES_HYGIENE -> Pair(2.50, 2.50 / unitsPerPkg)
-                        ProductCategory.FEEDING -> Pair(8.00, 8.00)
-                        ProductCategory.CLOTHING -> Pair(4.50, 4.50)
-                        ProductCategory.HEALTH -> Pair(3.50, 3.50)
-                        ProductCategory.CRIB_SLEEP -> Pair(25.00, 25.00)
-                        ProductCategory.TRANSPORT -> Pair(45.00, 45.00)
-                        ProductCategory.HOSPITAL_BAG -> Pair(4.00, 4.00)
-                    }
-                    Triple(defaultPkg, defaultUnit, "Estimado de Mercado")
+                    // ¡CERO PRECIOS INVENTADOS! Se deja en blanco para ingresar o cotizar
+                    Triple(null, null, "Sin precio de referencia")
                 }
             }
 
             // Cálculo exacto del costo total y etiqueta descriptiva
-            val totalPrice: Double
+            val totalPrice: Double?
             val quantityDisplayLabel: String
             val effectiveQty: Int
 
@@ -417,30 +425,32 @@ class ShoppingRadarViewModel(
                 if (isPurchased) {
                     val packs = p.packageCount.coerceAtLeast(1)
                     val totalUnits = p.effectiveTotalUnits
-                    totalPrice = packs * packagePriceUsd
+                    totalPrice = packagePriceUsd?.let { it * packs }
                     effectiveQty = totalUnits
                     quantityDisplayLabel = "$packs pqte(s) × $unitsPerPkg uds ($totalUnits total)"
                 } else {
                     val remainingUnits = (p.quantityTarget - p.quantityCurrent).coerceAtLeast(1)
                     val remainingPacks = kotlin.math.ceil(remainingUnits.toDouble() / unitsPerPkg).toInt().coerceAtLeast(1)
-                    totalPrice = remainingPacks * packagePriceUsd
+                    totalPrice = packagePriceUsd?.let { it * remainingPacks }
                     effectiveQty = remainingUnits
                     quantityDisplayLabel = "$remainingPacks pqte(s) faltantes (~$remainingUnits uds)"
                 }
             } else {
                 // Producto unitario (cuna, coche, ropita, tetero individual)
                 effectiveQty = if (isPurchased) p.quantityCurrent.coerceAtLeast(1) else (p.quantityTarget - p.quantityCurrent).coerceAtLeast(1)
-                totalPrice = unitPriceUsd * effectiveQty
+                totalPrice = unitPriceUsd?.let { it * effectiveQty }
                 quantityDisplayLabel = "$effectiveQty unidad(es)"
             }
 
             if (isPurchased) {
-                totalSpent += totalPrice
                 purchasedCount++
+                if (totalPrice != null) totalSpent += totalPrice
             } else {
-                totalPending += totalPrice
                 pendingCount++
+                if (totalPrice != null) totalPending += totalPrice
             }
+
+            if (totalPrice != null) pricedCount++ else unpricedCount++
 
             lines.add(
                 ProductBudgetLine(
@@ -467,7 +477,46 @@ class ShoppingRadarViewModel(
             bcvRate = bcvRate,
             purchasedCount = purchasedCount,
             pendingCount = pendingCount,
-            lines = lines.sortedWith(compareBy<ProductBudgetLine> { it.isPurchased }.thenByDescending { it.totalPriceUsd })
+            lines = lines.sortedWith(
+                compareBy<ProductBudgetLine> { it.isPurchased }
+                    .thenByDescending { it.hasPrice }
+                    .thenByDescending { it.totalPriceUsd ?: 0.0 }
+            ),
+            pricedCount = pricedCount,
+            unpricedCount = unpricedCount
         )
+    }
+
+    /**
+     * Permite fijar o actualizar el precio de referencia de un producto en el inventario
+     * (cargado por el usuario o fijado desde Farmatodo).
+     */
+    fun setProductReferencePrice(
+        productId: String,
+        priceUsd: Double?,
+        source: String,
+        googleSheetUrl: String? = null
+    ) {
+        val currentList = inventoryProducts.value
+        val prod = currentList.firstOrNull { it.id == productId } ?: return
+        val updated = prod.copy(
+            referencePriceUsd = priceUsd,
+            referencePriceSource = source,
+            updatedAt = System.currentTimeMillis()
+        )
+        if (repository != null) {
+            repository.saveProduct(updated, googleSheetUrl)
+        } else {
+            val newList = currentList.map { if (it.id == productId) updated else it }
+            localPreferences.saveInventoryCache(newList)
+        }
+    }
+
+    /**
+     * Búsqueda en vivo de un producto en Farmatodo Venezuela para consultar su precio oficial.
+     */
+    suspend fun searchFarmatodoPrice(query: String, barcode: String = ""): FarmatodoProductBenchmark? {
+        val currentRate = _bcvRate.value.rate
+        return farmatodoClient.lookupBenchmark(barcode, query, "", currentRate)
     }
 }

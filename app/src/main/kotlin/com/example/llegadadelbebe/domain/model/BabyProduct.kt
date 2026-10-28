@@ -65,8 +65,11 @@ data class BabyProduct(
     val notes: String = "",
     val geminiOpinion: String = "",   // Consejo u opinión extraído por Gemini 3.8
     val registeredBy: String = "",    // "Papá (Edward)" o "Mamá (Britney)"
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+    val referencePriceUsd: Double? = null, // Precio de referencia en USD fijado (por usuario o Farmatodo)
+    val referencePriceSource: String = ""   // Fuente: "Cargado por usuario", "Farmatodo Oficial", etc.
 ) {
+    val hasReferencePrice: Boolean get() = referencePriceUsd != null && referencePriceUsd > 0.0
     /**
      * Resuelve cuántas unidades vienen contenidas en 1 paquete.
      * Si unitsPerPackage fue registrado como 1 pero quantityCurrent es mayor (ej: paquete de 20 pañales),

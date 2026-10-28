@@ -34,6 +34,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,6 +49,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.llegadadelbebe.core.storage.LocalPreferences
+import com.example.llegadadelbebe.data.remote.FarmatodoApiClient
+import com.example.llegadadelbebe.domain.model.FarmatodoProductBenchmark
+import java.util.Locale
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -74,10 +82,29 @@ fun ProductDetailDialog(
     onDeleteProduct: (String) -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val bcvRate = remember { LocalPreferences(context).getLastBcvRate().coerceAtLeast(1.0) }
+
     val effectiveUnits = remember(product.id) { product.effectiveUnitsPerPackage }
     var packageCount by remember(product.id) { mutableIntStateOf(product.packageCount.coerceAtLeast(1)) }
     var status by remember(product.id) { mutableStateOf(product.status) }
     var confirmDelete by remember { mutableStateOf(false) }
+
+    var referencePriceUsd by remember(product.id, product.referencePriceUsd) {
+        mutableStateOf(product.referencePriceUsd)
+    }
+    var referencePriceSource by remember(product.id, product.referencePriceSource) {
+        mutableStateOf(product.referencePriceSource)
+    }
+    var priceInputUsd by remember(product.id, product.referencePriceUsd) {
+        mutableStateOf(product.referencePriceUsd?.let { String.format(Locale.US, "%.2f", it) } ?: "")
+    }
+    var priceInputVes by remember(product.id, product.referencePriceUsd) {
+        mutableStateOf(product.referencePriceUsd?.let { String.format(Locale.US, "%.2f", it * bcvRate) } ?: "")
+    }
+    var isSearchingFarmatodo by remember { mutableStateOf(false) }
+    var farmatodoMatch by remember { mutableStateOf<FarmatodoProductBenchmark?>(null) }
+    var farmatodoSearchMessage by remember { mutableStateOf("") }
 
     var currentPhotoBase64 by remember(product.id, product.photoBase64) { mutableStateOf(product.photoBase64) }
     var isShowingRawPhoto by remember { mutableStateOf(false) }
@@ -537,7 +564,209 @@ fun ProductDetailDialog(
                     }
                 }
 
-                // 8. Botones de Acción (Eliminar y Guardar)
+                // 8. Precio de Referencia (Opcional - Nunca Inventado)
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "🏷️ Precio de Referencia",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (referencePriceUsd != null && referencePriceUsd!! > 0.0) {
+                                Surface(
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = Color(0xFFE8F5E9)
+                                ) {
+                                    Text(
+                                        text = "$${String.format(Locale.US, "%.2f", referencePriceUsd)} USD",
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                                        color = Color(0xFF2E7D32),
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp
+                                    )
+                                }
+                            } else {
+                                Text(
+                                    text = "Sin precio (en blanco)",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        if (referencePriceSource.isNotBlank()) {
+                            Text(
+                                text = "Fuente: $referencePriceSource",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = priceInputUsd,
+                                onValueChange = { input ->
+                                    priceInputUsd = input
+                                    val parsed = input.toDoubleOrNull()
+                                    if (parsed != null && parsed > 0.0) {
+                                        referencePriceUsd = parsed
+                                        if (referencePriceSource.isBlank() || referencePriceSource == "Sin precio") {
+                                            referencePriceSource = "Cargado por usuario"
+                                        }
+                                        priceInputVes = String.format(Locale.US, "%.2f", parsed * bcvRate)
+                                    } else if (input.isBlank()) {
+                                        referencePriceUsd = null
+                                        referencePriceSource = ""
+                                        priceInputVes = ""
+                                    }
+                                },
+                                label = { Text("Precio USD ($)") },
+                                placeholder = { Text("Ej: 24.50") },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+
+                            OutlinedTextField(
+                                value = priceInputVes,
+                                onValueChange = { input ->
+                                    priceInputVes = input
+                                    val parsed = input.toDoubleOrNull()
+                                    if (parsed != null && parsed > 0.0) {
+                                        val usd = parsed / bcvRate
+                                        referencePriceUsd = usd
+                                        if (referencePriceSource.isBlank() || referencePriceSource == "Sin precio") {
+                                            referencePriceSource = "Cargado por usuario"
+                                        }
+                                        priceInputUsd = String.format(Locale.US, "%.2f", usd)
+                                    } else if (input.isBlank()) {
+                                        referencePriceUsd = null
+                                        referencePriceSource = ""
+                                        priceInputUsd = ""
+                                    }
+                                },
+                                label = { Text("Precio Bs. (BCV)") },
+                                placeholder = { Text("Ej: 21500") },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    isSearchingFarmatodo = true
+                                    farmatodoSearchMessage = "Buscando en Farmatodo Venezuela..."
+                                    coroutineScope.launch {
+                                        val benchmark = FarmatodoApiClient().lookupBenchmark(
+                                            barcode = product.barcode,
+                                            productName = product.name,
+                                            brand = product.brand,
+                                            bcvRate = bcvRate
+                                        )
+                                        isSearchingFarmatodo = false
+                                        if (benchmark != null) {
+                                            farmatodoMatch = benchmark
+                                            farmatodoSearchMessage = ""
+                                        } else {
+                                            farmatodoSearchMessage = "No se halló en Farmatodo con ese nombre/código."
+                                        }
+                                    }
+                                },
+                                enabled = !isSearchingFarmatodo,
+                                modifier = Modifier.weight(1.2f),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                if (isSearchingFarmatodo) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
+                                Text("🔍 Buscar en Farmatodo", fontSize = 11.sp)
+                            }
+
+                            if (referencePriceUsd != null) {
+                                OutlinedButton(
+                                    onClick = {
+                                        referencePriceUsd = null
+                                        referencePriceSource = ""
+                                        priceInputUsd = ""
+                                        priceInputVes = ""
+                                        farmatodoMatch = null
+                                        farmatodoSearchMessage = ""
+                                    },
+                                    modifier = Modifier.weight(0.8f),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    Text("Quitar", fontSize = 11.sp)
+                                }
+                            }
+                        }
+
+                        if (farmatodoSearchMessage.isNotBlank()) {
+                            Text(
+                                text = farmatodoSearchMessage,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        farmatodoMatch?.let { match ->
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                                modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Text(
+                                        text = "💊 Farmatodo: ${match.name}",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    Text(
+                                        text = "Precio oficial: $${String.format(Locale.US, "%.2f", match.effectivePriceUsd)} USD (Bs. ${String.format(Locale.US, "%.2f", match.effectivePriceVes)})",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                    Button(
+                                        onClick = {
+                                            val price = match.effectivePriceUsd
+                                            referencePriceUsd = price
+                                            referencePriceSource = "Farmatodo Oficial"
+                                            priceInputUsd = String.format(Locale.US, "%.2f", price)
+                                            priceInputVes = String.format(Locale.US, "%.2f", price * bcvRate)
+                                        },
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth().height(36.dp)
+                                    ) {
+                                        Text("Usar este precio de Farmatodo", fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 9. Botones de Acción (Eliminar y Guardar)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -570,6 +799,8 @@ fun ProductDetailDialog(
                                     quantityTarget = totalUnits,
                                     status = status,
                                     photoBase64 = currentPhotoBase64,
+                                    referencePriceUsd = referencePriceUsd,
+                                    referencePriceSource = referencePriceSource,
                                     updatedAt = System.currentTimeMillis()
                                 )
                             )

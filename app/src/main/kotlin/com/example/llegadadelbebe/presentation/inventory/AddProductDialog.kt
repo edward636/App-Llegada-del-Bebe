@@ -79,6 +79,7 @@ fun AddProductDialog(
     var ingredients by remember { mutableStateOf("") }
     var manufacturedIn by remember { mutableStateOf("") }
     var expirationDate by remember { mutableStateOf("") }
+    var referencePriceText by remember { mutableStateOf("") }
     var notes by remember { mutableStateOf("") }
     var registeredBy by remember { mutableStateOf(defaultRegisteredBy) }
 
@@ -336,6 +337,16 @@ fun AddProductDialog(
                     )
                 }
 
+                // Precio de Referencia (Opcional - Nunca Inventado)
+                OutlinedTextField(
+                    value = referencePriceText,
+                    onValueChange = { referencePriceText = it },
+                    label = { Text("Precio de Referencia USD ($) - Opcional") },
+                    placeholder = { Text("Ej: 24.50 (dejar vacío si no se conoce)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
                 OutlinedTextField(
                     value = notes,
                     onValueChange = { notes = it },
@@ -365,6 +376,7 @@ fun AddProductDialog(
                         onClick = {
                             if (name.isNotBlank()) {
                                 val totalUnits = (packageCount * unitsPerPackage).coerceAtLeast(1)
+                                val parsedRefPrice = referencePriceText.toDoubleOrNull()?.takeIf { it > 0.0 }
                                 onSave(
                                     BabyProduct(
                                         id = UUID.randomUUID().toString(),
@@ -386,7 +398,9 @@ fun AddProductDialog(
                                         usefulUntilAge = usefulUntilAge.trim(),
                                         notes = notes.trim(),
                                         registeredBy = registeredBy,
-                                        updatedAt = System.currentTimeMillis()
+                                        updatedAt = System.currentTimeMillis(),
+                                        referencePriceUsd = parsedRefPrice,
+                                        referencePriceSource = if (parsedRefPrice != null) "Cargado por $registeredBy" else ""
                                     )
                                 )
                             }

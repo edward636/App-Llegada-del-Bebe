@@ -100,6 +100,9 @@ fun ConfirmGeminiProductDialog(
     var usefulUntilAge by remember(initialProduct.id, initialProduct.usefulUntilAge) { mutableStateOf(initialProduct.usefulUntilAge) }
     var geminiOpinion by remember(initialProduct.id) { mutableStateOf(initialProduct.geminiOpinion) }
     var registeredBy by remember(initialProduct.id) { mutableStateOf(initialProduct.registeredBy.ifBlank { "Papá (Edward)" }) }
+    var referencePriceText by remember(initialProduct.id) {
+        mutableStateOf(initialProduct.referencePriceUsd?.let { String.format(java.util.Locale.US, "%.2f", it) } ?: "")
+    }
 
     // Manejo de imagen limpia de catálogo vs foto de cámara
     var currentPhotoBase64 by remember(initialProduct.id) { mutableStateOf(initialProduct.photoBase64) }
@@ -682,6 +685,16 @@ fun ConfirmGeminiProductDialog(
                     )
                 }
 
+                // Precio de Referencia (Opcional - Nunca Inventado)
+                OutlinedTextField(
+                    value = referencePriceText,
+                    onValueChange = { referencePriceText = it },
+                    label = { Text("Precio de Referencia USD ($) - Opcional") },
+                    placeholder = { Text("Ej: 24.50 (dejar en blanco si no se conoce)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+
                 // Estado (Comprado vs Regalado / Baby Shower)
                 Text(text = "Tipo de Adquisición:", style = MaterialTheme.typography.labelMedium)
                 Row(
@@ -760,7 +773,9 @@ fun ConfirmGeminiProductDialog(
                                         missingInfoPrompt = "",
                                         geminiOpinion = geminiOpinion.trim(),
                                         registeredBy = registeredBy,
-                                        updatedAt = System.currentTimeMillis()
+                                        updatedAt = System.currentTimeMillis(),
+                                        referencePriceUsd = referencePriceText.toDoubleOrNull()?.takeIf { it > 0.0 },
+                                        referencePriceSource = if (referencePriceText.toDoubleOrNull() != null) "Cargado por $registeredBy" else ""
                                     )
                                 )
                             }

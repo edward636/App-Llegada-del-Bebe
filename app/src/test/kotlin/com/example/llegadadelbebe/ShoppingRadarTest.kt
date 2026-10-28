@@ -1,6 +1,7 @@
 package com.example.llegadadelbebe
 
 import com.example.llegadadelbebe.core.util.StoreLocationHelper
+import com.example.llegadadelbebe.domain.model.BabyProduct
 import com.example.llegadadelbebe.domain.model.CurrencyType
 import com.example.llegadadelbebe.domain.model.FamilyBudgetReport
 import com.example.llegadadelbebe.domain.model.FarmatodoProductBenchmark
@@ -297,8 +298,8 @@ class ShoppingRadarTest {
             )
         )
 
-        val totalSpent = lines.filter { it.isPurchased }.sumOf { it.totalPriceUsd } // 120 + 45 = 165.0
-        val totalPending = lines.filter { !it.isPurchased }.sumOf { it.totalPriceUsd } // 23 + 12 = 35.0
+        val totalSpent = lines.filter { it.isPurchased && it.hasPrice }.sumOf { it.totalPriceUsd ?: 0.0 } // 120 + 45 = 165.0
+        val totalPending = lines.filter { !it.isPurchased && it.hasPrice }.sumOf { it.totalPriceUsd ?: 0.0 } // 23 + 12 = 35.0
 
         val budget = FamilyBudgetReport(
             totalSpentUsd = totalSpent,
@@ -306,7 +307,9 @@ class ShoppingRadarTest {
             bcvRate = bcvRate,
             purchasedCount = 2,
             pendingCount = 2,
-            lines = lines
+            lines = lines,
+            pricedCount = 4,
+            unpricedCount = 0
         )
 
         // Verificaciones en Dólares
@@ -361,5 +364,80 @@ class ShoppingRadarTest {
             isUserConfirmed = true
         )
         assertFalse("No debe coincidir si son nombres conceptualmente distintos", unconfirmedStore.hasGoogleMapsMatch)
+    }
+
+    @Test
+    fun testNeverInventsPrices_UnpricedItemsLeftBlank() {
+        val bcvRate = 900.0
+
+        val unquotedLine = ProductBudgetLine(
+            productId = "prod_avent",
+            productName = "Set de Teteros Philips Avent Natural",
+            brand = "Philips Avent",
+            category = ProductCategory.FEEDING,
+            isPurchased = false,
+            quantity = 1,
+            unitPriceUsd = null, // Sin precio conocido
+            totalPriceUsd = null, // NUNCA se inventa un precio por categoría
+            sourcePriceLabel = "Sin precio de referencia"
+        )
+
+        assertFalse("El producto no debe tener precio fijado", unquotedLine.hasPrice)
+        assertEquals("--", unquotedLine.formattedTotalUsd)
+        assertEquals("Sin precio", unquotedLine.formattedTotalVes(bcvRate))
+
+        val quotedLine = ProductBudgetLine(
+            productId = "prod_pampers",
+            productName = "Pañales Pampers Premium Care P x 40",
+            brand = "Pampers",
+            category = ProductCategory.DIAPERS,
+            isPurchased = true,
+            quantity = 1,
+            unitPriceUsd = 14.50,
+            totalPriceUsd = 14.50,
+            sourcePriceLabel = "Cargado por Papá Edward ($14.50)"
+        )
+
+        val budget = FamilyBudgetReport(
+            totalSpentUsd = 14.50,
+            totalPendingUsd = 0.0, // El tetero sin precio no suma falsos dólares
+            bcvRate = bcvRate,
+            purchasedCount = 1,
+            pendingCount = 1,
+            lines = listOf(quotedLine, unquotedLine),
+            pricedCount = 1,
+            unpricedCount = 1
+        )
+
+        assertEquals(14.50, budget.totalSpentUsd, 0.001)
+        assertEquals(0.0, budget.totalPendingUsd, 0.001)
+        assertEquals(1, budget.pricedCount)
+        assertEquals(1, budget.unpricedCount)
+    }
+
+    @Test
+    fun testBabyProduct_ReferencePriceFieldsAndPersistence() {
+        val product = BabyProduct(
+            id = "prod_avent_custom",
+            name = "Set Teteros Philips Avent",
+            brand = "Philips Avent",
+            category = ProductCategory.FEEDING,
+            packageCount = 1,
+            unitsPerPackage = 1,
+            referencePriceUsd = 32.50,
+            referencePriceSource = "Cargado por usuario"
+        )
+
+        assertTrue(product.hasReferencePrice)
+        assertEquals(32.50, product.referencePriceUsd!!, 0.001)
+        assertEquals("Cargado por usuario", product.referencePriceSource)
+
+        val unpricedProduct = BabyProduct(
+            id = "prod_crib",
+            name = "Cuna Colecho",
+            category = ProductCategory.CRIB_SLEEP
+        )
+        assertFalse(unpricedProduct.hasReferencePrice)
+        assertNull(unpricedProduct.referencePriceUsd)
     }
 }

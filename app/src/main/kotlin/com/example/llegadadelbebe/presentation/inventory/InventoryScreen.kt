@@ -976,6 +976,45 @@ fun ProductMosaicTile(
                     }
                 }
 
+                // Precio de Referencia (si existe o si está sin precio)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 1.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (product.hasReferencePrice) {
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = Color(0xFFE8F5E9)
+                        ) {
+                            Text(
+                                text = "🏷️ $${String.format(java.util.Locale.US, "%.2f", product.referencePriceUsd)}",
+                                modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
+                                color = Color(0xFF2E7D32),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "🏷️ Sin precio",
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+
+                    if (product.referencePriceSource.isNotBlank()) {
+                        Text(
+                            text = product.referencePriceSource.take(14),
+                            fontSize = 9.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
                 // Control Rápido de Paquetes en Inventario: Stepper (-) y (+)
                 Surface(
                     shape = RoundedCornerShape(8.dp),

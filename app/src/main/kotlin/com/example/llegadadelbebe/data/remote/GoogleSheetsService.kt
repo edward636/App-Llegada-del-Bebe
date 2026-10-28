@@ -81,6 +81,10 @@ class GoogleSheetsService {
                 val usefulUntilAge = metaJson?.optString("usefulUntilAge", "") ?: ""
                 val packageCount = metaJson?.optInt("packageCount", 1) ?: 1
                 val unitsPerPackage = metaJson?.optInt("unitsPerPackage", 1) ?: 1
+                val referencePriceUsd = if (metaJson != null && metaJson.has("referencePriceUsd") && !metaJson.isNull("referencePriceUsd")) {
+                    metaJson.optDouble("referencePriceUsd", 0.0).takeIf { it > 0.0 }
+                } else null
+                val referencePriceSource = metaJson?.optString("referencePriceSource", "") ?: ""
 
                 products.add(
                     BabyProduct(
@@ -107,7 +111,9 @@ class GoogleSheetsService {
                         notes = cleanNotes,
                         geminiOpinion = item.optString("geminiOpinion"),
                         registeredBy = item.optString("registeredBy"),
-                        updatedAt = item.optLong("updatedAt", System.currentTimeMillis())
+                        updatedAt = item.optLong("updatedAt", System.currentTimeMillis()),
+                        referencePriceUsd = referencePriceUsd,
+                        referencePriceSource = referencePriceSource
                     )
                 )
             }
@@ -193,6 +199,10 @@ class GoogleSheetsService {
             put("barcode", product.barcode)
             put("countryVariant", product.countryVariant)
             put("usefulUntilAge", product.usefulUntilAge)
+            product.referencePriceUsd?.let { put("referencePriceUsd", it) }
+            if (product.referencePriceSource.isNotBlank()) {
+                put("referencePriceSource", product.referencePriceSource)
+            }
             // Guardar miniatura ultraligera (< 6,000 chars) para sincronización instantánea por red móvil
             if (product.photoBase64.isNotBlank() && product.photoBase64.length < 6000) {
                 put("photoBase64", product.photoBase64)

@@ -75,6 +75,10 @@ class LocalPreferences(context: Context) {
                     put("notes", item.notes)
                     put("geminiOpinion", item.geminiOpinion)
                     put("registeredBy", item.registeredBy)
+                    item.referencePriceUsd?.let { put("referencePriceUsd", it) }
+                    if (item.referencePriceSource.isNotBlank()) {
+                        put("referencePriceSource", item.referencePriceSource)
+                    }
                 }
                 array.put(obj)
             }
@@ -122,7 +126,11 @@ class LocalPreferences(context: Context) {
                         usefulUntilAge = obj.optString("usefulUntilAge", ""),
                         notes = obj.optString("notes", ""),
                         geminiOpinion = obj.optString("geminiOpinion", ""),
-                        registeredBy = obj.optString("registeredBy", "Papá (Edward)")
+                        registeredBy = obj.optString("registeredBy", "Papá (Edward)"),
+                        referencePriceUsd = if (obj.has("referencePriceUsd") && !obj.isNull("referencePriceUsd")) {
+                            obj.optDouble("referencePriceUsd", 0.0).takeIf { it > 0.0 }
+                        } else null,
+                        referencePriceSource = obj.optString("referencePriceSource", "")
                     )
                 )
             }
