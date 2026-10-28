@@ -620,7 +620,175 @@ class GeminiClient(
 
         throw lastException ?: RuntimeException("No se pudo conectar con ningún modelo de Gemini.")
     }
+
+    /**
+     * Genera un mensaje tierno, personalizado y sabio para el día de hoy, combinando:
+     * - El desarrollo del bebé para este día específico (semana, día, tamaño).
+     * - Los datos de la base de datos (progreso de compras, pañales, preparación).
+     * - Saludo amoroso dirigido a Britney o Edward.
+     */
+    suspend fun generateDailyBabyWisdom(
+        activeUser: String,
+        babyName: String,
+        gestationalWeeks: Int,
+        gestationalDays: Int,
+        babySizeComparison: String,
+        daysRemaining: Long,
+        purchasedCount: Int,
+        totalItems: Int,
+        apiKey: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val isMom = activeUser.contains("Mamá", ignoreCase = true)
+            val prompt = """
+                Eres el asesor pediátrico y de apego más cariñoso para los padres Britney y Edward en la dulce espera de su bebé '$babyName'.
+                Hoy están en:
+                - Semana gestacional: $gestationalWeeks semanas + $gestationalDays días.
+                - Tamaño de referencia del bebé hoy: $babySizeComparison.
+                - Días restantes para el parto: $daysRemaining días.
+                - Base de datos de preparativos: Llevan $purchasedCount de $totalItems artículos ya listos en casa.
+                - Lector del mensaje en este momento: ${if (isMom) "Mamita Britney 🌸" else "Papá Edward 💙"}.
+
+                Escribe un mensaje de bienvenida para el DÍA DE HOY:
+                1. Saludo breve y cariñoso mencionando el nombre del lector.
+                2. Un hecho fascinante o hito del desarrollo del bebé hoy (ej: sus sentidos, sus manitas, latidos, o tamaño).
+                3. Una mención motivadora y cariñosa sobre cómo avanzan sus preparativos en la base de datos de casa.
+                4. Un consejo de amor o bienestar práctico (si es para Britney: hidratación, descanso, acariciar la pancita; si es para Edward: consentir a Britney, apoyo amoroso en el hogar).
+
+                Longitud: 2 párrafos cortos (máximo 80-90 palabras). Tono cálido, alegre, esperanzador y familiar. Formato de texto limpio sin tecnicismos fríos.
+            """.trimIndent()
+
+            val requestBody = JSONObject().apply {
+                val contents = JSONArray().apply {
+                    put(JSONObject().apply {
+                        val parts = JSONArray().apply {
+                            put(JSONObject().put("text", prompt))
+                        }
+                        put("parts", parts)
+                    })
+                }
+                put("contents", contents)
+                put("generationConfig", JSONObject().apply {
+                    put("temperature", 0.7)
+                })
+            }
+
+            val responseString = executePost(requestBody.toString(), apiKey)
+            val root = JSONObject(responseString)
+            val candidates = root.optJSONArray("candidates")
+                ?: throw RuntimeException("Respuesta vacía de Gemini")
+            val text = candidates.getJSONObject(0).getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text")
+            Result.success(text.trim())
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Analiza por IA multimodal la fotografía de una caja de medicamento, vitamina o récipe médico prenatal.
+     */
+    suspend fun extractMedicationFromImage(
+        base64Image: String,
+        mimeType: String = "image/jpeg",
+        apiKey: String
+    ): Result<ParsedMedicationInfo> = withContext(Dispatchers.IO) {
+        try {
+            val promptText = """
+                Eres un asistente farmacéutico pediátrico y obstétrico de máxima precisión para el embarazo de Britney.
+                Analiza la fotografía de la caja de medicamento/vitamina prenatal o del récipe médico.
+
+                Debes extraer en un objeto JSON con estas claves exactas:
+                1. "nombre_comercial": Nombre del medicamento o vitamina (ej: "Sulfato Ferroso", "Ácido Fólico", "Caltrate 600+D", "GestaDHA", "Progesterona").
+                2. "principio_activo": Principio activo o composición principal (ej: "Hierro elemental 60mg", "Ácido Fólico 1mg", "Calcio 600mg + Vitamina D3 400UI").
+                3. "dosis": Dosis unitaria (ej: "1 tableta", "1 cápsula blanda", "5 ml").
+                4. "frecuencia_horas": Frecuencia en horas (entero: 24 para una vez al día, 12 para cada 12h, 8 para cada 8h). Por defecto 24.
+                5. "horarios_sugeridos": Arreglo de strings en formato HH:mm según la frecuencia (ej: ["08:00"] para 24h, ["08:00", "20:00"] para 12h).
+                6. "instrucciones_comidas": Cómo tomarlo con alimentos (ej: "En ayunas con jugo de naranja para mejor absorción", "Con el almuerzo", "Lejos de lácteos y café").
+                7. "advertencias_clinicas": Interacciones o advertencias (ej: "No tomar junto al Calcio; esperar al menos 2 horas de separación", "Consumir abundante agua").
+                8. "pastillas_en_caja": Total de pastillas o cápsulas que trae la caja (entero, ej: 30, 60, 100). Si no se aprecia, 30.
+                9. "notas": Breve nota relevante del laboratorio o indicación obstétrica.
+
+                Responde ÚNICAMENTE un objeto JSON válido con estas claves exactas.
+            """.trimIndent()
+
+            val requestBody = JSONObject().apply {
+                val contents = JSONArray().apply {
+                    put(JSONObject().apply {
+                        val parts = JSONArray().apply {
+                            put(JSONObject().put("text", promptText))
+                            put(JSONObject().apply {
+                                put("inline_data", JSONObject().apply {
+                                    put("mime_type", mimeType)
+                                    put("data", base64Image)
+                                })
+                            })
+                        }
+                        put("parts", parts)
+                    })
+                }
+                put("contents", contents)
+
+                put("generationConfig", JSONObject().apply {
+                    put("temperature", 0.1)
+                    put("response_mime_type", "application/json")
+                })
+            }
+
+            val responseString = executePost(requestBody.toString(), apiKey)
+            val root = JSONObject(responseString)
+            val candidates = root.optJSONArray("candidates")
+                ?: throw RuntimeException("Respuesta sin candidatos de Gemini")
+            val firstCandidate = candidates.getJSONObject(0)
+            val content = firstCandidate.getJSONObject("content")
+            val parts = content.getJSONArray("parts")
+            val text = parts.getJSONObject(0).getString("text")
+
+            val json = JSONObject(text.trim())
+
+            val rawTimes = json.optJSONArray("horarios_sugeridos")
+            val scheduleTimes = mutableListOf<String>()
+            if (rawTimes != null) {
+                for (i in 0 until rawTimes.length()) {
+                    val t = rawTimes.optString(i, "")
+                    if (t.isNotBlank()) scheduleTimes.add(t)
+                }
+            }
+            if (scheduleTimes.isEmpty()) {
+                val freq = json.optInt("frecuencia_horas", 24)
+                if (freq <= 12) scheduleTimes.addAll(listOf("08:00", "20:00"))
+                else scheduleTimes.add("08:00")
+            }
+
+            val parsed = ParsedMedicationInfo(
+                name = json.optString("nombre_comercial", "Medicamento Prenatal").trim(),
+                activeIngredient = json.optString("principio_activo", "").trim(),
+                dose = json.optString("dosis", "1 tableta").trim(),
+                frequencyHours = json.optInt("frecuencia_horas", 24).coerceIn(4, 48),
+                scheduleTimes = scheduleTimes,
+                foodInstructions = json.optString("instrucciones_comidas", "Con abundante agua").trim(),
+                clinicalWarnings = json.optString("advertencias_clinicas", "").trim(),
+                pillsInBox = json.optInt("pastillas_en_caja", 30).coerceAtLeast(1),
+                notes = json.optString("notas", "").trim()
+            )
+
+            Result.success(parsed)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
+
+data class ParsedMedicationInfo(
+    val name: String,
+    val activeIngredient: String,
+    val dose: String,
+    val frequencyHours: Int,
+    val scheduleTimes: List<String>,
+    val foodInstructions: String,
+    val clinicalWarnings: String,
+    val pillsInBox: Int,
+    val notes: String
+)
 
 data class ParsedPriceQuote(
     val productName: String,

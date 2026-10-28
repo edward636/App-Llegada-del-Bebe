@@ -365,6 +365,150 @@ class LocalPreferences(context: Context) {
         saveAllKnownStores(current)
     }
 
+    fun getDailyAiWisdom(): Pair<String, String>? {
+        val date = prefs.getString(KEY_DAILY_AI_DATE, null) ?: return null
+        val message = prefs.getString(KEY_DAILY_AI_MESSAGE, null) ?: return null
+        return Pair(date, message)
+    }
+
+    fun saveDailyAiWisdom(date: String, message: String) {
+        prefs.edit()
+            .putString(KEY_DAILY_AI_DATE, date)
+            .putString(KEY_DAILY_AI_MESSAGE, message)
+            .apply()
+    }
+
+    fun saveMedicationsCache(medications: List<com.example.llegadadelbebe.domain.model.PrenatalMedication>) {
+        try {
+            val array = JSONArray()
+            for (m in medications) {
+                val obj = JSONObject().apply {
+                    put("id", m.id)
+                    put("name", m.name)
+                    put("activeIngredient", m.activeIngredient)
+                    put("dose", m.dose)
+                    put("frequencyHours", m.frequencyHours)
+                    val timesArray = JSONArray()
+                    m.scheduleTimes.forEach { timesArray.put(it) }
+                    put("scheduleTimes", timesArray)
+                    put("foodInstructions", m.foodInstructions)
+                    put("clinicalWarnings", m.clinicalWarnings)
+                    put("pillsRemaining", m.pillsRemaining)
+                    put("totalPillsInPackage", m.totalPillsInPackage)
+                    put("isMandatory", m.isMandatory)
+                    put("photoBase64", m.photoBase64)
+                    put("notes", m.notes)
+                    put("lastTakenDate", m.lastTakenDate)
+                    put("lastTakenTime", m.lastTakenTime)
+                    put("lastConfirmedBy", m.lastConfirmedBy)
+                    put("updatedAt", m.updatedAt)
+                }
+                array.put(obj)
+            }
+            prefs.edit().putString(KEY_MEDICATIONS_CACHE, array.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun getMedicationsCache(): List<com.example.llegadadelbebe.domain.model.PrenatalMedication> {
+        val raw = prefs.getString(KEY_MEDICATIONS_CACHE, null) ?: return getDefaultPrenatalMedications()
+        return try {
+            val array = JSONArray(raw)
+            if (array.length() == 0) return getDefaultPrenatalMedications()
+            val list = mutableListOf<com.example.llegadadelbebe.domain.model.PrenatalMedication>()
+            for (i in 0 until array.length()) {
+                val obj = array.getJSONObject(i)
+                val timesArray = obj.optJSONArray("scheduleTimes")
+                val times = mutableListOf<String>()
+                if (timesArray != null) {
+                    for (j in 0 until timesArray.length()) times.add(timesArray.optString(j))
+                }
+                if (times.isEmpty()) times.add("08:00")
+
+                list.add(
+                    com.example.llegadadelbebe.domain.model.PrenatalMedication(
+                        id = obj.optString("id"),
+                        name = obj.optString("name"),
+                        activeIngredient = obj.optString("activeIngredient"),
+                        dose = obj.optString("dose", "1 tableta"),
+                        frequencyHours = obj.optInt("frequencyHours", 24),
+                        scheduleTimes = times,
+                        foodInstructions = obj.optString("foodInstructions"),
+                        clinicalWarnings = obj.optString("clinicalWarnings"),
+                        pillsRemaining = obj.optInt("pillsRemaining", 30),
+                        totalPillsInPackage = obj.optInt("totalPillsInPackage", 30),
+                        isMandatory = obj.optBoolean("isMandatory", true),
+                        photoBase64 = obj.optString("photoBase64"),
+                        notes = obj.optString("notes"),
+                        lastTakenDate = obj.optString("lastTakenDate"),
+                        lastTakenTime = obj.optString("lastTakenTime"),
+                        lastConfirmedBy = obj.optString("lastConfirmedBy"),
+                        updatedAt = obj.optLong("updatedAt", System.currentTimeMillis())
+                    )
+                )
+            }
+            list
+        } catch (_: Exception) {
+            getDefaultPrenatalMedications()
+        }
+    }
+
+    private fun getDefaultPrenatalMedications(): List<com.example.llegadadelbebe.domain.model.PrenatalMedication> {
+        return listOf(
+            com.example.llegadadelbebe.domain.model.PrenatalMedication(
+                id = "MED_DEFAULT_FOLIC",
+                name = "Ácido Fólico",
+                activeIngredient = "Ácido Fólico 1 mg",
+                dose = "1 tableta",
+                frequencyHours = 24,
+                scheduleTimes = listOf("08:00"),
+                foodInstructions = "En ayunas o con el desayuno con abundante agua",
+                clinicalWarnings = "Fundamental para el cierre del tubo neural y desarrollo del bebé",
+                pillsRemaining = 30,
+                totalPillsInPackage = 30
+            ),
+            com.example.llegadadelbebe.domain.model.PrenatalMedication(
+                id = "MED_DEFAULT_IRON",
+                name = "Hierro / Sulfato Ferroso",
+                activeIngredient = "Hierro elemental 60 mg",
+                dose = "1 tableta",
+                frequencyHours = 24,
+                scheduleTimes = listOf("13:00"),
+                foodInstructions = "Con el almuerzo o jugo de naranja cítrico para máxima absorción",
+                clinicalWarnings = "⚠️ NO tomar junto al Calcio o leche (separar al menos 2 horas)",
+                pillsRemaining = 30,
+                totalPillsInPackage = 30
+            ),
+            com.example.llegadadelbebe.domain.model.PrenatalMedication(
+                id = "MED_DEFAULT_CALCIUM",
+                name = "Calcio + Vitamina D3",
+                activeIngredient = "Calcio 600 mg + Vit D3 400 UI",
+                dose = "1 tableta",
+                frequencyHours = 24,
+                scheduleTimes = listOf("20:00"),
+                foodInstructions = "En la cena",
+                clinicalWarnings = "Separar del hierro por al menos 2 horas para evitar interferencia",
+                pillsRemaining = 30,
+                totalPillsInPackage = 30
+            )
+        )
+    }
+
+    fun recordAppOpen() {
+        prefs.edit().putLong(KEY_LAST_APP_OPEN_MILLIS, System.currentTimeMillis()).apply()
+    }
+
+    fun getLastAppOpenMillis(): Long {
+        return prefs.getLong(KEY_LAST_APP_OPEN_MILLIS, System.currentTimeMillis())
+    }
+
+    fun saveLastEngagementNotifEpochDay(epochDay: Long) {
+        prefs.edit().putLong(KEY_LAST_ENGAGEMENT_NOTIF_EPOCH_DAY, epochDay).apply()
+    }
+
+    fun getLastEngagementNotifEpochDay(): Long {
+        return prefs.getLong(KEY_LAST_ENGAGEMENT_NOTIF_EPOCH_DAY, 0L)
+    }
+
     companion object {
         private const val PREFS_NAME = "llegada_del_bebe_prefs"
         private const val KEY_BABY_NAME = "baby_name"
@@ -380,5 +524,10 @@ class LocalPreferences(context: Context) {
         private const val KEY_LAST_BCV_DATE = "last_bcv_date"
         private const val KEY_RADAR_QUOTES_CACHE = "radar_quotes_cache_json"
         private const val KEY_KNOWN_STORES_CACHE = "known_stores_cache_json"
+        private const val KEY_DAILY_AI_DATE = "daily_ai_date"
+        private const val KEY_DAILY_AI_MESSAGE = "daily_ai_message"
+        private const val KEY_MEDICATIONS_CACHE = "medications_cache_json"
+        private const val KEY_LAST_APP_OPEN_MILLIS = "last_app_open_millis"
+        private const val KEY_LAST_ENGAGEMENT_NOTIF_EPOCH_DAY = "last_engagement_notif_epoch_day"
     }
 }

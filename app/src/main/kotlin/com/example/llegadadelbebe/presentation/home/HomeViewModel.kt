@@ -17,6 +17,10 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDate
 
+import com.example.llegadadelbebe.core.storage.LocalPreferences
+import com.example.llegadadelbebe.data.remote.GeminiClient
+import kotlinx.coroutines.launch
+
 data class HomeSummary(
     val totalItems: Int,
     val purchasedCount: Int,
@@ -24,9 +28,18 @@ data class HomeSummary(
     val hospitalBagCount: Int
 )
 
+data class DailyAiWisdom(
+    val date: String = "",
+    val message: String = "",
+    val isLoading: Boolean = false
+)
+
 class HomeViewModel(
-    private val repository: BabyInventoryRepository
+    private val repository: BabyInventoryRepository,
+    private val localPreferences: LocalPreferences? = null
 ) : ViewModel() {
+
+    private val geminiClient: GeminiClient = GeminiClient()
 
     private val _babyName = MutableStateFlow("Nuestro Niño")
     val babyName: StateFlow<String> = _babyName.asStateFlow()
@@ -66,6 +79,69 @@ class HomeViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = HomeSummary(3, 3, 0, 0)
     )
+
+    private val _dailyWisdom = MutableStateFlow(
+        DailyAiWisdom(
+            date = LocalDate.now().toString(),
+            message = localPreferences?.getDailyAiWisdom()?.second
+                ?: "¡Buenos días, hermosa familia! El bebé sigue creciendo fuerte día tras día. Que hoy sea una jornada llena de paz, amor y alegría compartida en casa."
+        )
+    )
+    val dailyWisdom: StateFlow<DailyAiWisdom> = _dailyWisdom.asStateFlow()
+
+    fun refreshDailyWisdom(apiKey: String, activeUser: String) {
+        val todayStr = LocalDate.now().toString()
+        val stats = pregnancyStats.value
+        val sum = summary.value
+
+        // Si ya hay un mensaje en caché para hoy y no estamos forzando regeneración
+        val cached = localPreferences?.getDailyAiWisdom()
+        if (cached != null && cached.first == todayStr && apiKey.isBlank()) {
+            _dailyWisdom.value = DailyAiWisdom(todayStr, cached.second, false)
+            return
+        }
+
+        if (apiKey.isBlank()) {
+            val fallback = buildOfflineWisdom(activeUser, stats, sum)
+            _dailyWisdom.value = DailyAiWisdom(todayStr, fallback, false)
+            localPreferences?.saveDailyAiWisdom(todayStr, fallback)
+            return
+        }
+
+        viewModelScope.launch {
+            _dailyWisdom.value = _dailyWisdom.value.copy(isLoading = true)
+            val result = geminiClient.generateDailyBabyWisdom(
+                activeUser = activeUser,
+                babyName = _babyName.value,
+                gestationalWeeks = stats.currentWeeks,
+                gestationalDays = stats.currentDays,
+                babySizeComparison = stats.babySizeComparison,
+                daysRemaining = stats.daysRemaining,
+                purchasedCount = sum.purchasedCount,
+                totalItems = sum.totalItems,
+                apiKey = apiKey
+            )
+
+            val finalMsg = result.getOrElse {
+                buildOfflineWisdom(activeUser, stats, sum)
+            }
+
+            _dailyWisdom.value = DailyAiWisdom(todayStr, finalMsg, false)
+            localPreferences?.saveDailyAiWisdom(todayStr, finalMsg)
+        }
+    }
+
+    private fun buildOfflineWisdom(user: String, stats: PregnancyStats, sum: HomeSummary): String {
+        val isMom = user.contains("Mamá", ignoreCase = true)
+        val name = if (isMom) "Mamita Britney 🌸" else "Papá Edward 💙"
+        val partner = if (isMom) "Edward" else "Britney"
+
+        return if (isMom) {
+            "¡Buenos días, $name! Hoy estás en la semana ${stats.currentWeeks} + ${stats.currentDays} días y tu bebé tiene el tamaño de ${stats.babySizeComparison}. En casa ya tienen ${sum.purchasedCount} de ${sum.totalItems} artículos listos para su llegada. Recuerda tomar tus vitaminas, hidratarte y disfrutar cada patadita junto a $partner."
+        } else {
+            "¡Buenos días, $name! Tu bebé está en la semana ${stats.currentWeeks} + ${stats.currentDays} días, creciendo sano y midiendo como ${stats.babySizeComparison}. Tienen ${sum.purchasedCount} artículos listos en el inventario. Hoy es un gran día para consentir a $partner, recordarle sus vitaminas y soñar juntos con la llegada del pequeño."
+        }
+    }
 
     fun updateBabySettings(name: String, lmp: LocalDate) {
         if (name.isNotBlank()) _babyName.value = name

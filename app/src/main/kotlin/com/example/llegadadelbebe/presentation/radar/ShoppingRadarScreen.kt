@@ -96,6 +96,7 @@ import com.example.llegadadelbebe.domain.model.ProductPriceQuote
 import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -727,7 +728,7 @@ fun BudgetLineCard(line: ProductBudgetLine, bcvRate: Double) {
 
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = "Ref: ${line.sourcePriceLabel} • Cant: ${line.quantity}",
+                    text = "Ref: ${line.sourcePriceLabel} • ${line.quantityDisplayLabel.ifBlank { "Cant: ${line.quantity}" }}",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -977,7 +978,12 @@ fun PriceQuoteCard(
                     val details = listOf(
                         quote.brand.takeIf { it.isNotBlank() },
                         quote.stageSize.takeIf { it.isNotBlank() },
-                        "${quote.totalUnits} uds"
+                        if (quote.isMultiUnitPackage) {
+                            if (quote.packageCount > 1) "${quote.packageCount} pqtes de ${quote.unitsPerPackage} uds (${quote.totalUnits} total)"
+                            else "${quote.unitsPerPackage} uds / paquete"
+                        } else {
+                            if (quote.packageCount > 1) "${quote.packageCount} unidades" else "1 unidad"
+                        }
                     ).filterNotNull().joinToString(" • ")
 
                     Text(text = details, fontSize = 12.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Medium)
@@ -1037,14 +1043,18 @@ fun PriceQuoteCard(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text(text = "Precio en tienda:", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = if (quote.isMultiUnitPackage) "Precio del paquete:" else "Precio en tienda:",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         Text(text = quote.formattedPriceStore, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
                     }
 
                     Column(horizontalAlignment = Alignment.End) {
                         Text(text = "Ref. Dólar BCV:", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(
-                            text = "${quote.formattedUsdEquivalent} (${quote.formattedUnitPriceUsd})",
+                            text = if (quote.isMultiUnitPackage) "${quote.formattedUsdEquivalent} (${quote.formattedUnitPriceUsd})" else quote.formattedUsdEquivalent,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF2E7D32)
@@ -1053,9 +1063,37 @@ fun PriceQuoteCard(
                 }
             }
 
+            // Inversión acumulada si se registraron múltiples paquetes
+            if (quote.packageCount > 1) {
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.35f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "📦 Inversión total (${quote.packageCount} paquetes):",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        Text(
+                            text = "${quote.formattedTotalUsd} (${quote.formattedTotalVes})",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                }
+            }
+
             // Comparador con Farmatodo
             if (ft != null) {
-                val diffUsd = quote.priceUsdEquivalent - ft.effectivePriceUsd
+                val diffUsd = quote.packagePriceUsd - ft.effectivePriceUsd
                 val isFarmatodoCheaper = diffUsd > 0.05
                 val isStoreCheaper = diffUsd < -0.05
 
@@ -1091,7 +1129,7 @@ fun PriceQuoteCard(
                             )
 
                             Text(
-                                text = String.format("$%.2f (Bs. %.2f)", ft.effectivePriceUsd, ft.effectivePriceVes),
+                                text = String.format(Locale.US, "$%.2f (Bs. %.2f)", ft.effectivePriceUsd, ft.effectivePriceVes),
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color(0xFF1565C0)
@@ -1099,9 +1137,9 @@ fun PriceQuoteCard(
                         }
 
                         val verdictText = when {
-                            isFarmatodoCheaper -> String.format("⚠️ En Farmatodo está $%.2f más barato (-%.0f%%). ¡Te conviene en Farmatodo!", diffUsd, (diffUsd / quote.priceUsdEquivalent) * 100)
-                            isStoreCheaper -> String.format("🎉 ¡Gran oferta! Te ahorras $%.2f en este local frente a Farmatodo.", -diffUsd)
-                            else -> "⚖️ Precio prácticamente igual al de Farmatodo Venezuela."
+                            isFarmatodoCheaper -> String.format(Locale.US, "⚠️ En Farmatodo el paquete está $%.2f más barato (-%.0f%%). ¡Te conviene en Farmatodo!", diffUsd, (diffUsd / quote.packagePriceUsd) * 100)
+                            isStoreCheaper -> String.format(Locale.US, "🎉 ¡Gran oferta! Te ahorras $%.2f por paquete en este comercio frente a Farmatodo.", -diffUsd)
+                            else -> "⚖️ Precio por paquete prácticamente igual al de Farmatodo Venezuela."
                         }
 
                         Text(
@@ -1161,11 +1199,16 @@ fun QuoteEditorDialog(
     var farmatodoBenchmark by remember { mutableStateOf(draft.farmatodoBenchmark) }
 
     val parsedPrice = priceText.toDoubleOrNull() ?: 0.0
-    val totalUnits = (packageCount.coerceAtLeast(1)) * (unitsPerPackage.coerceAtLeast(1))
-    val priceUsd = if (currency == CurrencyType.VES) {
+    val isMultiUnit = unitsPerPackage > 1
+    val safeUnitsPerPkg = unitsPerPackage.coerceAtLeast(1)
+    val safePkgCount = packageCount.coerceAtLeast(1)
+
+    // parsedPrice es el precio por paquete registrado en tienda
+    val packagePriceUsd = if (currency == CurrencyType.VES) {
         if (bcvRate > 0) parsedPrice / bcvRate else parsedPrice
     } else parsedPrice
-    val unitPrice = if (totalUnits > 0) priceUsd / totalUnits else priceUsd
+    val unitCostUsd = if (safeUnitsPerPkg > 1) packagePriceUsd / safeUnitsPerPkg else packagePriceUsd
+    val totalCostUsd = packagePriceUsd * safePkgCount
 
     // Verificar si las coordenadas coinciden con la memoria GPS
     val matchedStore = remember(draft.latitude, draft.longitude) {
@@ -1363,7 +1406,7 @@ fun QuoteEditorDialog(
                     OutlinedTextField(
                         value = priceText,
                         onValueChange = { priceText = it },
-                        label = { Text("Precio en Tienda") },
+                        label = { Text(if (isMultiUnit) "Precio por Paquete" else "Precio en Tienda") },
                         modifier = Modifier.weight(1.3f),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         shape = RoundedCornerShape(12.dp)
@@ -1390,8 +1433,21 @@ fun QuoteEditorDialog(
                     color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
                     modifier = Modifier.fillMaxWidth()
                 ) {
+                    val previewText = buildString {
+                        if (isMultiUnit) {
+                            append(String.format(Locale.US, "Ref. BCV: $%.2f USD / pqte • $%.3f / ud", packagePriceUsd, unitCostUsd))
+                            if (safePkgCount > 1) {
+                                append(String.format(Locale.US, "\nTotal ($safePkgCount pqtes): $%.2f USD", totalCostUsd))
+                            }
+                        } else {
+                            append(String.format(Locale.US, "Ref. BCV: $%.2f USD", packagePriceUsd))
+                            if (safePkgCount > 1) {
+                                append(String.format(Locale.US, " • Total ($safePkgCount uds): $%.2f USD", totalCostUsd))
+                            }
+                        }
+                    }
                     Text(
-                        text = String.format("Equivalente BCV: $%.2f USD • $%.3f / ud", priceUsd, unitPrice),
+                        text = previewText,
                         modifier = Modifier.padding(10.dp),
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,

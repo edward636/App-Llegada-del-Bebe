@@ -52,17 +52,66 @@ class ShoppingRadarTest {
             priceAmount = 17720.0, // 17,720 Bs
             priceCurrency = CurrencyType.VES,
             bcvRateApplied = bcvRate,
-            priceUsdEquivalent = 17720.0 / bcvRate, // 20.0 USD
-            unitPriceUsd = (17720.0 / bcvRate) / 64.0, // 0.3125 USD/ud
+            priceUsdEquivalent = 17720.0 / bcvRate, // 20.0 USD por paquete
+            unitPriceUsd = (17720.0 / bcvRate) / 32.0, // 0.625 USD/ud
             quotedAt = "2026-10-26 15:30"
         )
 
         assertEquals(64, quoteInVes.totalUnits)
         assertEquals(20.0, quoteInVes.priceUsdEquivalent, 0.001)
-        assertEquals(0.3125, quoteInVes.unitPriceUsd, 0.0001)
-        assertEquals("Bs. 17720.00", quoteInVes.formattedPriceStore)
-        assertEquals("$20.00", quoteInVes.formattedUsdEquivalent)
-        assertEquals("$0.313 / ud", quoteInVes.formattedUnitPriceUsd)
+        assertEquals(0.625, quoteInVes.effectiveUnitPriceUsd, 0.0001)
+        assertEquals("Bs. 17720.00 / pqte", quoteInVes.formattedPriceStore)
+        assertEquals("$20.00 / pqte", quoteInVes.formattedUsdEquivalent)
+        assertEquals("$0.625 / ud", quoteInVes.formattedUnitPriceUsd)
+        assertEquals(40.0, quoteInVes.totalPriceUsd, 0.001)
+    }
+
+    @Test
+    fun testPackageVsUnitPricing_CalculationAccuracy() {
+        // Pañales: 2 paquetes de 36 unidades a $10.50 por paquete
+        val diaperQuote = ProductPriceQuote(
+            productName = "Huggies Active Sec",
+            category = ProductCategory.DIAPERS,
+            stageSize = "P",
+            packageCount = 2,
+            unitsPerPackage = 36,
+            storeName = "Mercafácil",
+            priceAmount = 10.50, // Precio de 1 paquete
+            priceCurrency = CurrencyType.USD,
+            priceUsdEquivalent = 10.50,
+            unitPriceUsd = 10.50 / 36.0, // 0.29166 USD/pañal
+            quotedAt = "2026-10-28 10:00"
+        )
+
+        assertTrue(diaperQuote.isMultiUnitPackage)
+        assertEquals(72, diaperQuote.totalUnits)
+        assertEquals(10.50, diaperQuote.packagePriceUsd, 0.001)
+        assertEquals(21.00, diaperQuote.totalPriceUsd, 0.001) // 2 * 10.50
+        assertEquals(0.2917, diaperQuote.effectiveUnitPriceUsd, 0.001)
+        assertEquals("$10.50 / pqte", diaperQuote.formattedPriceStore)
+        assertEquals("$10.50 / pqte", diaperQuote.formattedUsdEquivalent)
+        assertEquals("$0.292 / ud", diaperQuote.formattedUnitPriceUsd)
+
+        // Producto Unitario: Cuna de madera (1 unidad, precio $180.00)
+        val cribQuote = ProductPriceQuote(
+            productName = "Cuna Colecho Madera",
+            category = ProductCategory.CRIB_SLEEP,
+            packageCount = 1,
+            unitsPerPackage = 1,
+            storeName = "Bebé Mundo",
+            priceAmount = 180.0,
+            priceCurrency = CurrencyType.USD,
+            priceUsdEquivalent = 180.0,
+            unitPriceUsd = 180.0,
+            quotedAt = "2026-10-28 11:00"
+        )
+
+        assertFalse(cribQuote.isMultiUnitPackage)
+        assertEquals(1, cribQuote.totalUnits)
+        assertEquals(180.0, cribQuote.packagePriceUsd, 0.001)
+        assertEquals(180.0, cribQuote.totalPriceUsd, 0.001)
+        assertEquals("$180.00", cribQuote.formattedPriceStore)
+        assertEquals("$180.00", cribQuote.formattedUsdEquivalent)
     }
 
     @Test

@@ -216,15 +216,17 @@ class ShoppingRadarViewModel(
         googleMapsName: String = ""
     ) {
         val currentRate = _bcvRate.value.rate
-        val totalUnits = (packageCount.coerceAtLeast(1)) * (unitsPerPackage.coerceAtLeast(1))
+        val safeUnitsPerPackage = unitsPerPackage.coerceAtLeast(1)
 
-        val priceUsd = if (priceCurrency == CurrencyType.VES) {
+        // priceAmount es el PRECIO POR PAQUETE registrado en el anaquel o etiqueta
+        val packagePriceUsd = if (priceCurrency == CurrencyType.VES) {
             if (currentRate > 0.0) priceAmount / currentRate else priceAmount
         } else {
             priceAmount
         }
 
-        val unitPriceUsd = if (totalUnits > 0) priceUsd / totalUnits else priceUsd
+        // Costo por unidad individual dentro del paquete (ej: por pañal o toallita)
+        val unitPriceUsd = if (safeUnitsPerPackage > 1) packagePriceUsd / safeUnitsPerPackage else packagePriceUsd
         val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm"))
 
         val newQuote = ProductPriceQuote(
@@ -233,7 +235,7 @@ class ShoppingRadarViewModel(
             category = category,
             stageSize = stageSize.trim(),
             packageCount = packageCount.coerceAtLeast(1),
-            unitsPerPackage = unitsPerPackage.coerceAtLeast(1),
+            unitsPerPackage = safeUnitsPerPackage,
             storeName = storeName.trim().ifBlank { "Comercio" },
             storeAddress = storeAddress.trim(),
             latitude = latitude,
@@ -241,7 +243,7 @@ class ShoppingRadarViewModel(
             priceAmount = priceAmount,
             priceCurrency = priceCurrency,
             bcvRateApplied = currentRate,
-            priceUsdEquivalent = priceUsd,
+            priceUsdEquivalent = packagePriceUsd,
             unitPriceUsd = unitPriceUsd,
             quotedAt = timestamp,
             registeredBy = activeUser.value,
@@ -345,7 +347,10 @@ class ShoppingRadarViewModel(
 
         for (p in products) {
             val isPurchased = p.status != ProductStatus.PENDING
-            val qty = if (isPurchased) p.quantityCurrent.coerceAtLeast(1) else (p.quantityTarget - p.quantityCurrent).coerceAtLeast(1)
+            val isPackageProduct = p.category == ProductCategory.DIAPERS ||
+                p.category == ProductCategory.WIPES_HYGIENE ||
+                p.unitsPerPackage > 1
+            val unitsPerPkg = p.effectiveUnitsPerPackage.coerceAtLeast(1)
 
             // Buscar si hay cotización registrada en tienda física para este producto
             val matchingQuote = quotes.firstOrNull { q ->
@@ -354,32 +359,81 @@ class ShoppingRadarViewModel(
                 (p.brand.isNotBlank() && q.brand.isNotBlank() && p.brand.equals(q.brand, ignoreCase = true) && p.category == q.category)
             }
 
-            val (unitPriceUsd, sourceLabel) = when {
-                matchingQuote != null -> {
-                    val unit = if (matchingQuote.unitPriceUsd > 0.0) matchingQuote.unitPriceUsd else matchingQuote.priceUsdEquivalent
-                    Pair(unit, "${matchingQuote.storeName} ($${String.format("%.2f", matchingQuote.priceUsdEquivalent)})")
+            // Buscar coincidencia en Farmatodo de las cotizaciones
+            val ftBenchmark = matchingQuote?.farmatodoBenchmark
+                ?: quotes.mapNotNull { it.farmatodoBenchmark }.firstOrNull { ft ->
+                    (p.barcode.isNotBlank() && ft.barcode == p.barcode) ||
+                    (p.name.contains(ft.name, ignoreCase = true) || ft.name.contains(p.name, ignoreCase = true))
                 }
-                matchingQuote?.farmatodoBenchmark != null -> {
-                    val ft = matchingQuote.farmatodoBenchmark!!
-                    Pair(ft.effectivePriceUsd, "Farmatodo Oficial ($${String.format("%.2f", ft.effectivePriceUsd)})")
+
+            // Determinar costo por paquete y costo por unidad individual
+            val (packagePriceUsd, unitPriceUsd, sourceLabel) = when {
+                matchingQuote != null -> {
+                    val pkg = matchingQuote.packagePriceUsd
+                    val unit = if (isPackageProduct && unitsPerPkg > 1) {
+                        pkg / unitsPerPkg
+                    } else {
+                        matchingQuote.effectiveUnitPriceUsd
+                    }
+                    val label = if (isPackageProduct && unitsPerPkg > 1) {
+                        "${matchingQuote.storeName} ($${String.format(java.util.Locale.US, "%.2f", pkg)}/pqte • $${String.format(java.util.Locale.US, "%.3f", unit)}/ud)"
+                    } else {
+                        "${matchingQuote.storeName} ($${String.format(java.util.Locale.US, "%.2f", pkg)})"
+                    }
+                    Triple(pkg, unit, label)
+                }
+                ftBenchmark != null -> {
+                    val pkg = ftBenchmark.effectivePriceUsd
+                    val unit = if (isPackageProduct && unitsPerPkg > 1) pkg / unitsPerPkg else pkg
+                    val label = if (isPackageProduct && unitsPerPkg > 1) {
+                        "Farmatodo Oficial ($${String.format(java.util.Locale.US, "%.2f", pkg)}/pqte • $${String.format(java.util.Locale.US, "%.3f", unit)}/ud)"
+                    } else {
+                        "Farmatodo Oficial ($${String.format(java.util.Locale.US, "%.2f", pkg)})"
+                    }
+                    Triple(pkg, unit, label)
                 }
                 else -> {
-                    // Referencia estándar de mercado estimada según categoría
-                    val defaultRef = when (p.category) {
-                        ProductCategory.DIAPERS -> 0.35
-                        ProductCategory.WIPES_HYGIENE -> 2.50
-                        ProductCategory.FEEDING -> 8.00
-                        ProductCategory.CLOTHING -> 4.50
-                        ProductCategory.HEALTH -> 3.00
-                        ProductCategory.CRIB_SLEEP -> 25.00
-                        ProductCategory.TRANSPORT -> 45.00
-                        ProductCategory.HOSPITAL_BAG -> 3.50
+                    // Referencias estándar de mercado estimadas en Venezuela
+                    val (defaultPkg, defaultUnit) = when (p.category) {
+                        ProductCategory.DIAPERS -> Pair(10.50, 10.50 / unitsPerPkg)
+                        ProductCategory.WIPES_HYGIENE -> Pair(2.50, 2.50 / unitsPerPkg)
+                        ProductCategory.FEEDING -> Pair(8.00, 8.00)
+                        ProductCategory.CLOTHING -> Pair(4.50, 4.50)
+                        ProductCategory.HEALTH -> Pair(3.50, 3.50)
+                        ProductCategory.CRIB_SLEEP -> Pair(25.00, 25.00)
+                        ProductCategory.TRANSPORT -> Pair(45.00, 45.00)
+                        ProductCategory.HOSPITAL_BAG -> Pair(4.00, 4.00)
                     }
-                    Pair(defaultRef, "Estimado de Mercado")
+                    Triple(defaultPkg, defaultUnit, "Estimado de Mercado")
                 }
             }
 
-            val totalPrice = unitPriceUsd * qty
+            // Cálculo exacto del costo total y etiqueta descriptiva
+            val totalPrice: Double
+            val quantityDisplayLabel: String
+            val effectiveQty: Int
+
+            if (isPackageProduct && unitsPerPkg > 1) {
+                if (isPurchased) {
+                    val packs = p.packageCount.coerceAtLeast(1)
+                    val totalUnits = p.effectiveTotalUnits
+                    totalPrice = packs * packagePriceUsd
+                    effectiveQty = totalUnits
+                    quantityDisplayLabel = "$packs pqte(s) × $unitsPerPkg uds ($totalUnits total)"
+                } else {
+                    val remainingUnits = (p.quantityTarget - p.quantityCurrent).coerceAtLeast(1)
+                    val remainingPacks = kotlin.math.ceil(remainingUnits.toDouble() / unitsPerPkg).toInt().coerceAtLeast(1)
+                    totalPrice = remainingPacks * packagePriceUsd
+                    effectiveQty = remainingUnits
+                    quantityDisplayLabel = "$remainingPacks pqte(s) faltantes (~$remainingUnits uds)"
+                }
+            } else {
+                // Producto unitario (cuna, coche, ropita, tetero individual)
+                effectiveQty = if (isPurchased) p.quantityCurrent.coerceAtLeast(1) else (p.quantityTarget - p.quantityCurrent).coerceAtLeast(1)
+                totalPrice = unitPriceUsd * effectiveQty
+                quantityDisplayLabel = "$effectiveQty unidad(es)"
+            }
+
             if (isPurchased) {
                 totalSpent += totalPrice
                 purchasedCount++
@@ -395,10 +449,14 @@ class ShoppingRadarViewModel(
                     brand = p.brand,
                     category = p.category,
                     isPurchased = isPurchased,
-                    quantity = qty,
+                    quantity = effectiveQty,
                     unitPriceUsd = unitPriceUsd,
                     totalPriceUsd = totalPrice,
-                    sourcePriceLabel = sourceLabel
+                    sourcePriceLabel = sourceLabel,
+                    packageCount = if (isPurchased) p.packageCount.coerceAtLeast(1) else kotlin.math.ceil((p.quantityTarget - p.quantityCurrent).coerceAtLeast(1).toDouble() / unitsPerPkg).toInt().coerceAtLeast(1),
+                    unitsPerPackage = unitsPerPkg,
+                    isPackageProduct = isPackageProduct,
+                    quantityDisplayLabel = quantityDisplayLabel
                 )
             )
         }

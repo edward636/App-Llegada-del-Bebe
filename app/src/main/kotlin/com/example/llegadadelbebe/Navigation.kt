@@ -1,5 +1,10 @@
 package com.example.llegadadelbebe
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -10,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -17,6 +23,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
+import com.example.llegadadelbebe.core.notification.AppEngagementScheduler
+import com.example.llegadadelbebe.core.notification.NotificationHelper
 import com.example.llegadadelbebe.core.security.SecureConfig
 import com.example.llegadadelbebe.core.storage.LocalPreferences
 import com.example.llegadadelbebe.core.update.OtaInstallOutcome
@@ -30,6 +38,8 @@ import com.example.llegadadelbebe.presentation.home.HomeViewModel
 import com.example.llegadadelbebe.presentation.home.OtaUpdateDialog
 import com.example.llegadadelbebe.presentation.inventory.InventoryScreen
 import com.example.llegadadelbebe.presentation.inventory.InventoryViewModel
+import com.example.llegadadelbebe.presentation.medications.PrenatalMedicationsScreen
+import com.example.llegadadelbebe.presentation.medications.PrenatalMedicationsViewModel
 import com.example.llegadadelbebe.presentation.radar.ShoppingRadarScreen
 import com.example.llegadadelbebe.presentation.radar.ShoppingRadarViewModel
 import com.example.llegadadelbebe.presentation.settings.SettingsScreen
@@ -37,8 +47,8 @@ import com.example.llegadadelbebe.presentation.zodiac.FamilySynastryScreen
 import com.example.llegadadelbebe.presentation.zodiac.FamilySynastryViewModel
 import kotlinx.coroutines.launch
 
-const val APP_VERSION_CODE = 17
-const val APP_VERSION_NAME = "1.3.1"
+const val APP_VERSION_CODE = 18
+const val APP_VERSION_NAME = "1.4.0"
 
 @Composable
 fun MainNavigation() {
@@ -67,6 +77,15 @@ fun MainNavigation() {
     var otaDialogStatus by remember { mutableStateOf("") }
     var awaitingInstallPermission by remember { mutableStateOf(false) }
 
+    // Lanzador para solicitar permisos de notificación en Android 13+ (Tiramisu)
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            NotificationHelper.createNotificationChannels(context)
+        }
+    }
+
     // Si el usuario concede el permiso de "Instalar apps desconocidas" y regresa a la app,
     // lanza el instalador automáticamente usando el APK ya descargado en caché.
     DisposableEffect(lifecycleOwner, awaitingInstallPermission) {
@@ -85,8 +104,22 @@ fun MainNavigation() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Sincronización automática de inicio y chequeo OTA
+    // Sincronización automática de inicio, inicialización de notificaciones y chequeo OTA
     LaunchedEffect(Unit) {
+        // Inicializar canales de notificaciones en el sistema
+        NotificationHelper.createNotificationChannels(context)
+
+        // Registrar apertura y programar chequeo de inactividad
+        localPreferences.recordAppOpen()
+        AppEngagementScheduler.scheduleNextCheck(context)
+
+        // Solicitar permiso de notificaciones en Android 13+ si no está concedido
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+
         sharedRepository.initializeSheetUrl(googleSheetUrlState)
 
         val updateResult = OtaUpdateManager.checkForUpdate(
@@ -98,6 +131,8 @@ fun MainNavigation() {
             val info = updateResult.getOrNull()
             if (info != null && info.hasUpdate) {
                 pendingUpdate = info
+                // Notificar en la barra de estado de Android
+                NotificationHelper.showOtaUpdateNotification(context, info)
             }
         }
     }
@@ -129,6 +164,10 @@ fun MainNavigation() {
         )
     }
 
+    val medicationsViewModel: PrenatalMedicationsViewModel = viewModel {
+        PrenatalMedicationsViewModel(context.applicationContext as android.app.Application)
+    }
+
     NavDisplay(
         backStack = backStack,
         onBack = { backStack.removeLastOrNull() },
@@ -136,11 +175,13 @@ fun MainNavigation() {
             entry<NavHome> {
                 HomeScreen(
                     viewModel = homeViewModel,
+                    geminiApiKey = geminiApiKeyState,
                     activeUser = activeUserState,
                     onNavigateToInventory = { backStack.add(NavInventory) },
                     onNavigateToConsumables = { backStack.add(NavConsumables) },
                     onNavigateToSynastry = { backStack.add(NavFamilySynastry) },
                     onNavigateToRadar = { backStack.add(NavShoppingRadar) },
+                    onNavigateToMedications = { backStack.add(NavMedications) },
                     onNavigateToSettings = { backStack.add(NavSettings) }
                 )
             }
@@ -173,6 +214,13 @@ fun MainNavigation() {
             entry<NavShoppingRadar> {
                 ShoppingRadarScreen(
                     viewModel = radarViewModel,
+                    geminiApiKey = geminiApiKeyState,
+                    onBack = { backStack.removeLastOrNull() }
+                )
+            }
+            entry<NavMedications> {
+                PrenatalMedicationsScreen(
+                    viewModel = medicationsViewModel,
                     geminiApiKey = geminiApiKeyState,
                     onBack = { backStack.removeLastOrNull() }
                 )

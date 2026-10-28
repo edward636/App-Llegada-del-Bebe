@@ -66,11 +66,11 @@ data class ProductPriceQuote(
     val storeAddress: String = "",
     val latitude: Double = 0.0,
     val longitude: Double = 0.0,
-    val priceAmount: Double,
+    val priceAmount: Double, // Precio registrado en tienda para 1 paquete (o 1 unidad si es unitario)
     val priceCurrency: CurrencyType = CurrencyType.USD,
     val bcvRateApplied: Double = 1.0,
-    val priceUsdEquivalent: Double,
-    val unitPriceUsd: Double,
+    val priceUsdEquivalent: Double, // Precio de 1 paquete en USD (referencia BCV)
+    val unitPriceUsd: Double,       // Costo por unidad individual (ej: por pañal o toallita)
     val quotedAt: String,
     val registeredBy: String = "Papá (Edward)",
     val photoBase64: String = "",
@@ -80,18 +80,60 @@ data class ProductPriceQuote(
     val farmatodoBenchmark: FarmatodoProductBenchmark? = null
 ) {
     val totalUnits: Int get() = (packageCount.coerceAtLeast(1)) * (unitsPerPackage.coerceAtLeast(1))
-    val priceVesEquivalent: Double get() = priceUsdEquivalent * bcvRateApplied
+    val isMultiUnitPackage: Boolean get() = unitsPerPackage > 1
+
+    // Precio por paquete (1 paquete en USD y VES)
+    val packagePriceUsd: Double get() = priceUsdEquivalent
+    val packagePriceVes: Double get() = packagePriceUsd * bcvRateApplied
+
+    // Costo total si se adquieren varios paquetes (ej: 2 paquetes a $10 = $20)
+    val totalPriceUsd: Double get() = packagePriceUsd * packageCount.coerceAtLeast(1)
+    val totalPriceVes: Double get() = packagePriceVes * packageCount.coerceAtLeast(1)
+
+    // Costo por unidad individual (ej: por pañal o toallita)
+    val effectiveUnitPriceUsd: Double
+        get() = if (unitsPerPackage > 1) packagePriceUsd / unitsPerPackage else packagePriceUsd
+
+    val effectiveUnitPriceVes: Double
+        get() = effectiveUnitPriceUsd * bcvRateApplied
+
+    val priceVesEquivalent: Double get() = packagePriceVes
 
     val formattedPriceStore: String
         get() = if (priceCurrency == CurrencyType.VES) {
-            String.format(Locale.US, "Bs. %.2f", priceAmount)
+            if (isMultiUnitPackage) String.format(Locale.US, "Bs. %.2f / pqte", priceAmount)
+            else String.format(Locale.US, "Bs. %.2f", priceAmount)
         } else {
-            String.format(Locale.US, "$%.2f", priceAmount)
+            if (isMultiUnitPackage) String.format(Locale.US, "$%.2f / pqte", priceAmount)
+            else String.format(Locale.US, "$%.2f", priceAmount)
         }
 
-    val formattedUsdEquivalent: String get() = String.format(Locale.US, "$%.2f", priceUsdEquivalent)
-    val formattedVesEquivalent: String get() = String.format(Locale.US, "Bs. %.2f", priceVesEquivalent)
-    val formattedUnitPriceUsd: String get() = String.format(Locale.US, "$%.3f / ud", unitPriceUsd)
+    val formattedUsdEquivalent: String
+        get() = if (isMultiUnitPackage) {
+            String.format(Locale.US, "$%.2f / pqte", packagePriceUsd)
+        } else {
+            String.format(Locale.US, "$%.2f", packagePriceUsd)
+        }
+
+    val formattedVesEquivalent: String
+        get() = if (isMultiUnitPackage) {
+            String.format(Locale.US, "Bs. %.2f / pqte", packagePriceVes)
+        } else {
+            String.format(Locale.US, "Bs. %.2f", packagePriceVes)
+        }
+
+    val formattedUnitPriceUsd: String
+        get() = if (isMultiUnitPackage) {
+            String.format(Locale.US, "$%.3f / ud", effectiveUnitPriceUsd)
+        } else {
+            String.format(Locale.US, "$%.2f", effectiveUnitPriceUsd)
+        }
+
+    val formattedTotalUsd: String
+        get() = String.format(Locale.US, "$%.2f", totalPriceUsd)
+
+    val formattedTotalVes: String
+        get() = String.format(Locale.US, "Bs. %.2f", totalPriceVes)
 }
 
 data class PriceComparisonVerdict(
@@ -142,7 +184,11 @@ data class ProductBudgetLine(
     val quantity: Int,
     val unitPriceUsd: Double,
     val totalPriceUsd: Double,
-    val sourcePriceLabel: String // ej: "Mercafácil ($10.50)", "Farmatodo Oficial ($11.33)", "Estimado"
+    val sourcePriceLabel: String, // ej: "Mercafácil ($10.50/pqte • $0.292/ud)", "Farmatodo Oficial ($11.33)", "Estimado"
+    val packageCount: Int = 1,
+    val unitsPerPackage: Int = 1,
+    val isPackageProduct: Boolean = false,
+    val quantityDisplayLabel: String = ""
 ) {
     val formattedTotalUsd: String get() = String.format(Locale.US, "$%.2f", totalPriceUsd)
     fun formattedTotalVes(bcvRate: Double): String = String.format(Locale.US, "Bs. %.2f", totalPriceUsd * bcvRate)
