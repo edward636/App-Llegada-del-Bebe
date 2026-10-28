@@ -2,6 +2,7 @@ package com.example.llegadadelbebe.core.update
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -40,6 +41,57 @@ object OtaUpdateManager {
     private const val GITHUB_REPO = "Edward636/App-Llegada-del-Bebe"
     private const val GITHUB_RELEASES_API = "https://api.github.com/repos/$GITHUB_REPO/releases/latest"
     private const val APK_FILE_NAME = "update_bebe.apk"
+
+    /**
+     * Obtiene el nombre de versión real instalado directamente desde el PackageManager del sistema.
+     */
+    fun getAppVersionName(context: Context): String {
+        return try {
+            val pInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            }
+            pInfo.versionName ?: "1.4.2"
+        } catch (_: Exception) {
+            "1.4.2"
+        }
+    }
+
+    /**
+     * Obtiene el versionCode real instalado directamente desde el PackageManager del sistema.
+     */
+    fun getAppVersionCode(context: Context): Int {
+        return try {
+            val pInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageInfo(context.packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                context.packageManager.getPackageInfo(context.packageName, 0)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                pInfo.longVersionCode.toInt()
+            } else {
+                @Suppress("DEPRECATION")
+                pInfo.versionCode
+            }
+        } catch (_: Exception) {
+            20
+        }
+    }
+
+    /**
+     * Consulta actualizaciones OTA usando automáticamente la versión real instalada en el dispositivo.
+     */
+    suspend fun checkForUpdate(
+        context: Context,
+        checkUrl: String
+    ): Result<UpdateInfo> {
+        val currentVersionName = getAppVersionName(context)
+        val currentVersionCode = getAppVersionCode(context)
+        return checkForUpdate(currentVersionName, currentVersionCode, checkUrl)
+    }
 
     /**
      * Compara dos versiones semánticas (ej: "1.0.4" vs "1.0.3").

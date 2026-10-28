@@ -216,7 +216,7 @@ class EvaluateConsumablesUseCase {
 
         // 7. Ropita RN
         val clothesRn = products
-            .filter { it.category == ProductCategory.CLOTHING && it.stageSize.contains("RN", ignoreCase = true) }
+            .filter { it.category == ProductCategory.CLOTHING && it.status != ProductStatus.PENDING && it.stageSize.contains("RN", ignoreCase = true) }
             .sumOf { it.effectiveTotalUnits }
 
         val clothingRnAudit = ConsumableCategoryAudit(
@@ -230,7 +230,7 @@ class EvaluateConsumablesUseCase {
 
         // 8. Ropita 0-3M
         val clothes0to3 = products
-            .filter { it.category == ProductCategory.CLOTHING && (it.stageSize.contains("0-3", ignoreCase = true) || it.stageSize.contains("3M", ignoreCase = true)) }
+            .filter { it.category == ProductCategory.CLOTHING && it.status != ProductStatus.PENDING && (it.stageSize.contains("0-3", ignoreCase = true) || it.stageSize.contains("3M", ignoreCase = true)) }
             .sumOf { it.effectiveTotalUnits }
 
         val clothing0to3Audit = ConsumableCategoryAudit(

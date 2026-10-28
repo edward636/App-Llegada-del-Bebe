@@ -51,8 +51,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.example.llegadadelbebe.APP_VERSION_CODE
-import com.example.llegadadelbebe.APP_VERSION_NAME
 import com.example.llegadadelbebe.core.security.SecureConfig
 import com.example.llegadadelbebe.core.update.OtaInstallOutcome
 import com.example.llegadadelbebe.core.update.OtaUpdateManager
@@ -83,6 +81,7 @@ fun SettingsScreen(
     var isCheckingOta by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableIntStateOf(-1) }
     var awaitingInstallPermission by remember { mutableStateOf(false) }
+    val currentAppVersionName = remember { OtaUpdateManager.getAppVersionName(context) }
 
     // Si el usuario fue a Ajustes de Android a activar "Instalar apps desconocidas" y regresa,
     // se lanza el instalador automáticamente sin tener que volver a descargar el APK.
@@ -418,7 +417,7 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "v$APP_VERSION_NAME",
+                            text = "v$currentAppVersionName",
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold
                         )
@@ -485,8 +484,7 @@ fun SettingsScreen(
                                 isCheckingOta = true
                                 otaCheckStatus = "🔍 Comprobando actualizaciones en GitHub..."
                                 val result = OtaUpdateManager.checkForUpdate(
-                                    currentVersionName = APP_VERSION_NAME,
-                                    currentVersionCode = APP_VERSION_CODE,
+                                    context = context,
                                     checkUrl = SecureConfig.getGoogleSheetUrl()
                                 )
                                 if (result.isSuccess) {
@@ -515,7 +513,7 @@ fun SettingsScreen(
                                         }
                                     } else {
                                         isCheckingOta = false
-                                        otaCheckStatus = "✅ ¡Tu app ya está en la versión más reciente (v$APP_VERSION_NAME)!"
+                                        otaCheckStatus = "✅ ¡Tu app ya está en la versión más reciente (v$currentAppVersionName)!"
                                     }
                                 } else {
                                     isCheckingOta = false

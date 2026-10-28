@@ -11,8 +11,8 @@ android {
     applicationId = "com.example.llegadadelbebe"
     minSdk = 26
     targetSdk = 36
-    versionCode = 19
-    versionName = "1.4.1"
+    versionCode = 20
+    versionName = "1.4.2"
   }
 
   buildTypes {

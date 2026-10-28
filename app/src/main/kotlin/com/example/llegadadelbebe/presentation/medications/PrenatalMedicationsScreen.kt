@@ -55,6 +55,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -93,6 +94,10 @@ fun PrenatalMedicationsScreen(
     val adherence by viewModel.adherenceSummary.collectAsStateWithLifecycle()
     val isAnalyzing by viewModel.isAnalyzingPhoto.collectAsStateWithLifecycle()
     val activeUser by viewModel.activeUser.collectAsStateWithLifecycle()
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshMedications()
+    }
 
     var showEditorDialog by remember { mutableStateOf(false) }
     var selectedMedForEdit by remember { mutableStateOf<PrenatalMedication?>(null) }

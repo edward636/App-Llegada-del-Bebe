@@ -122,6 +122,10 @@ class FamilySynastryViewModel(
         recalculateAll()
     }
 
+    fun refreshCalculations() {
+        recalculateAll()
+    }
+
     private fun recalculateAll() {
         val baby = calculateCurrentBabyChart(_simulatedBirthHour.value)
         _babyChart.value = baby

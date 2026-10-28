@@ -89,14 +89,14 @@ class HomeViewModel(
     )
     val dailyWisdom: StateFlow<DailyAiWisdom> = _dailyWisdom.asStateFlow()
 
-    fun refreshDailyWisdom(apiKey: String, activeUser: String) {
+    fun refreshDailyWisdom(apiKey: String, activeUser: String, forceRefresh: Boolean = false) {
         val todayStr = LocalDate.now().toString()
         val stats = pregnancyStats.value
         val sum = summary.value
 
         // Si ya hay un mensaje en caché para hoy y no estamos forzando regeneración
         val cached = localPreferences?.getDailyAiWisdom()
-        if (cached != null && cached.first == todayStr && apiKey.isBlank()) {
+        if (!forceRefresh && cached != null && cached.first == todayStr) {
             _dailyWisdom.value = DailyAiWisdom(todayStr, cached.second, false)
             return
         }

@@ -30,7 +30,7 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
         val activeUser = localPreferences.getActiveUser()
         val isMom = activeUser.contains("Mamá", ignoreCase = true)
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        createNotificationChannel(notificationManager)
+        NotificationHelper.createNotificationChannels(context)
 
         when (action) {
             ACTION_TAKE_DOSE -> {
@@ -170,20 +170,6 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
                     MedicationAlarmScheduler.scheduleNextDailyAlarm(context, medId, medName, dose, instructions, scheduledTime)
                 }
             }
-        }
-    }
-
-    private fun createNotificationChannel(notificationManager: NotificationManager) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Medicamentos y Vitaminas Prenatales",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Recordatorios de tomas médicas y vitaminas duales para Britney y Edward"
-                enableVibration(true)
-            }
-            notificationManager.createNotificationChannel(channel)
         }
     }
 

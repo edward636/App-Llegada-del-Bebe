@@ -24,6 +24,10 @@ class GoogleSheetsService {
 
     companion object {
         private const val META_TAG = "||META_JSON:"
+        const val SYS_MEDICATIONS = "SYS_PRENATAL_MEDICATIONS"
+        const val SYS_RADAR_QUOTES = "SYS_RADAR_QUOTES"
+        const val SYS_KNOWN_STORES = "SYS_KNOWN_STORES"
+        const val SYS_HOSPITAL_BAG = "SYS_HOSPITAL_BAG"
     }
 
     /**
@@ -39,8 +43,8 @@ class GoogleSheetsService {
             for (i in 0 until jsonArray.length()) {
                 val item = jsonArray.getJSONObject(i)
                 val statusStr = item.optString("status", "PURCHASED").uppercase().trim()
-                // Ignorar filas eliminadas lógicamente o filas de prueba técnica
-                if (statusStr == "DELETED" || item.optString("id") == "test-check-1") continue
+                // Ignorar filas eliminadas lógicamente, filas de prueba técnica o registros internos de sistema
+                if (statusStr == "DELETED" || item.optString("id") == "test-check-1" || item.optString("id").startsWith("SYS_")) continue
 
                 val categoryStr = item.optString("category", "CLOTHING")
                 val category = runCatching {
@@ -187,13 +191,65 @@ class GoogleSheetsService {
         }
     }
 
+    /**
+     * Recupera un registro de sistema (ej: SYS_PRENATAL_MEDICATIONS, SYS_RADAR_QUOTES, SYS_KNOWN_STORES, SYS_HOSPITAL_BAG)
+     * desde Google Sheets para sincronizar entre Edward y Britney sin necesidad de cambiar el Apps Script.
+     */
+    suspend fun fetchSystemRecord(webAppUrl: String, systemId: String): Result<String?> = withContext(Dispatchers.IO) {
+        try {
+            val response = executeGetFollowingRedirects(webAppUrl)
+            val jsonObject = JSONObject(response)
+            val jsonArray = jsonObject.optJSONArray("data") ?: JSONArray()
+            for (i in 0 until jsonArray.length()) {
+                val item = jsonArray.getJSONObject(i)
+                if (item.optString("id") == systemId) {
+                    val rawNotes = item.optString("notes", "")
+                    val (_, metaJson) = unpackNotesAndMeta(rawNotes)
+                    val payload = metaJson?.optString("payload")
+                    return@withContext Result.success(payload)
+                }
+            }
+            Result.success(null)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Guarda o actualiza un registro de sistema en Google Sheets.
+     */
+    suspend fun saveSystemRecord(
+        webAppUrl: String,
+        systemId: String,
+        name: String,
+        jsonPayload: String
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val meta = JSONObject().apply {
+                put("payload", jsonPayload)
+            }
+            val packedNotes = "System Record$META_TAG$meta"
+            val payload = JSONObject().apply {
+                put("action", "saveItem")
+                put("item", JSONObject().apply {
+                    put("id", systemId)
+                    put("name", name)
+                    put("category", "SYSTEM")
+                    put("status", "ACTIVE")
+                    put("notes", packedNotes)
+                    put("updatedAt", System.currentTimeMillis())
+                })
+            }
+            val response = executePostToAppsScript(webAppUrl, payload.toString())
+            val jsonObject = JSONObject(response)
+            Result.success(jsonObject.optString("status") == "success")
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     private fun packNotesWithMeta(product: BabyProduct): String {
         val meta = JSONObject().apply {
-            put("ingredients", product.ingredients)
-            put("risksAndWarnings", product.risksAndWarnings)
-            put("safetyLevel", product.safetyLevel.name)
-            put("manufacturedIn", product.manufacturedIn)
-            put("expirationDate", product.expirationDate)
             put("packageCount", product.packageCount)
             put("unitsPerPackage", product.unitsPerPackage)
             put("barcode", product.barcode)
@@ -203,8 +259,8 @@ class GoogleSheetsService {
             if (product.referencePriceSource.isNotBlank()) {
                 put("referencePriceSource", product.referencePriceSource)
             }
-            // Guardar miniatura ultraligera (< 6,000 chars) para sincronización instantánea por red móvil
-            if (product.photoBase64.isNotBlank() && product.photoBase64.length < 6000) {
+            // Guardar miniatura (< 25,000 chars) para sincronización entre ambos teléfonos
+            if (product.photoBase64.isNotBlank() && product.photoBase64.length < 25000) {
                 put("photoBase64", product.photoBase64)
             }
         }

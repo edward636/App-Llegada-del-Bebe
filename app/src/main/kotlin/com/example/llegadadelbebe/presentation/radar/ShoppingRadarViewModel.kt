@@ -40,6 +40,7 @@ class ShoppingRadarViewModel(
     private val bcvClient = BcvExchangeRateClient(application)
     private val farmatodoClient = FarmatodoApiClient()
     private val geminiClient = GeminiClient()
+    private val googleSheetsService = com.example.llegadadelbebe.data.remote.GoogleSheetsService()
 
     private val _bcvRate = MutableStateFlow(
         BcvExchangeRate(
@@ -71,7 +72,12 @@ class ShoppingRadarViewModel(
     private val _isSearchingFarmatodo = MutableStateFlow(false)
     val isSearchingFarmatodo: StateFlow<Boolean> = _isSearchingFarmatodo.asStateFlow()
 
-    val activeUser: StateFlow<String> = MutableStateFlow(localPreferences.getActiveUser())
+    private val _activeUser = MutableStateFlow(localPreferences.getActiveUser())
+    val activeUser: StateFlow<String> = _activeUser.asStateFlow()
+
+    fun setActiveUser(user: String) {
+        _activeUser.value = user
+    }
 
     // Productos del inventario (compartido con repositorio o caché local)
     private val inventoryProducts: StateFlow<List<BabyProduct>> = repository?.products
@@ -84,6 +90,7 @@ class ShoppingRadarViewModel(
         _knownStores.value = localPreferences.getKnownStoreLocations()
         // Actualizar tasa BCV oficial
         refreshBcvRate()
+        syncQuotesWithCloud()
     }
 
     val filteredQuotes: StateFlow<List<ProductPriceQuote>> = combine(
@@ -269,12 +276,14 @@ class ShoppingRadarViewModel(
         val updatedList = listOf(newQuote) + _quotes.value
         _quotes.value = updatedList
         localPreferences.saveRadarQuotesCache(updatedList)
+        syncQuotesWithCloud()
     }
 
     fun deletePriceQuote(id: String) {
         val updated = _quotes.value.filterNot { it.id == id }
         _quotes.value = updated
         localPreferences.saveRadarQuotesCache(updated)
+        syncQuotesWithCloud()
     }
 
     fun analyzePricePhoto(
@@ -518,5 +527,38 @@ class ShoppingRadarViewModel(
     suspend fun searchFarmatodoPrice(query: String, barcode: String = ""): FarmatodoProductBenchmark? {
         val currentRate = _bcvRate.value.rate
         return farmatodoClient.lookupBenchmark(barcode, query, "", currentRate)
+    }
+
+    fun syncQuotesWithCloud(sheetUrl: String = com.example.llegadadelbebe.core.security.SecureConfig.getGoogleSheetUrl()) {
+        if (sheetUrl.isBlank()) return
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val remoteResult = googleSheetsService.fetchSystemRecord(sheetUrl, com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_RADAR_QUOTES)
+            if (remoteResult.isSuccess) {
+                val remotePayload = remoteResult.getOrNull()
+                if (!remotePayload.isNullOrBlank()) {
+                    val remoteQuotes = localPreferences.parseQuotesJson(remotePayload)
+                    if (remoteQuotes.isNotEmpty()) {
+                        val currentMap = _quotes.value.associateBy { it.id }.toMutableMap()
+                        for (rq in remoteQuotes) {
+                            if (!currentMap.containsKey(rq.id)) {
+                                currentMap[rq.id] = rq
+                            }
+                        }
+                        val merged = currentMap.values.sortedByDescending { it.quotedAt }
+                        _quotes.value = merged
+                        localPreferences.saveRadarQuotesCache(merged)
+                    }
+                }
+            }
+
+            // Subir cotizaciones unificadas a la nube
+            val jsonPayload = localPreferences.quotesToJson(_quotes.value)
+            googleSheetsService.saveSystemRecord(
+                webAppUrl = sheetUrl,
+                systemId = com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_RADAR_QUOTES,
+                name = "Cotizaciones de Precios",
+                jsonPayload = jsonPayload
+            )
+        }
     }
 }

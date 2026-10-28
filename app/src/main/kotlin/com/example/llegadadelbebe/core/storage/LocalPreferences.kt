@@ -205,57 +205,54 @@ class LocalPreferences(context: Context) {
             .apply()
     }
 
-    fun saveRadarQuotesCache(quotes: List<com.example.llegadadelbebe.domain.model.ProductPriceQuote>) {
-        try {
-            val array = JSONArray()
-            for (q in quotes) {
-                val obj = JSONObject().apply {
-                    put("id", q.id)
-                    put("productName", q.productName)
-                    put("brand", q.brand)
-                    put("category", q.category.name)
-                    put("stageSize", q.stageSize)
-                    put("packageCount", q.packageCount)
-                    put("unitsPerPackage", q.unitsPerPackage)
-                    put("storeName", q.storeName)
-                    put("storeAddress", q.storeAddress)
-                    put("latitude", q.latitude)
-                    put("longitude", q.longitude)
-                    put("priceAmount", q.priceAmount)
-                    put("priceCurrency", q.priceCurrency.name)
-                    put("bcvRateApplied", q.bcvRateApplied)
-                    put("priceUsdEquivalent", q.priceUsdEquivalent)
-                    put("unitPriceUsd", q.unitPriceUsd)
-                    put("quotedAt", q.quotedAt)
-                    put("registeredBy", q.registeredBy)
-                    put("photoBase64", q.photoBase64)
-                    put("notes", q.notes)
-                    put("barcode", q.barcode)
-                    put("googleMapsName", q.googleMapsName)
-                    q.farmatodoBenchmark?.let { f ->
-                        val fObj = JSONObject().apply {
-                            put("id", f.id)
-                            put("name", f.name)
-                            put("brand", f.brand)
-                            put("fullPriceVes", f.fullPriceVes)
-                            put("offerPriceVes", f.offerPriceVes)
-                            put("priceUsd", f.priceUsd)
-                            put("offerPriceUsd", f.offerPriceUsd)
-                            put("mediaImageUrl", f.mediaImageUrl)
-                            put("urlSlug", f.urlSlug)
-                            put("barcode", f.barcode)
-                        }
-                        put("farmatodo", fObj)
+    fun quotesToJson(quotes: List<com.example.llegadadelbebe.domain.model.ProductPriceQuote>): String {
+        val array = JSONArray()
+        for (q in quotes) {
+            val obj = JSONObject().apply {
+                put("id", q.id)
+                put("productName", q.productName)
+                put("brand", q.brand)
+                put("category", q.category.name)
+                put("stageSize", q.stageSize)
+                put("packageCount", q.packageCount)
+                put("unitsPerPackage", q.unitsPerPackage)
+                put("storeName", q.storeName)
+                put("storeAddress", q.storeAddress)
+                put("latitude", q.latitude)
+                put("longitude", q.longitude)
+                put("priceAmount", q.priceAmount)
+                put("priceCurrency", q.priceCurrency.name)
+                put("bcvRateApplied", q.bcvRateApplied)
+                put("priceUsdEquivalent", q.priceUsdEquivalent)
+                put("unitPriceUsd", q.unitPriceUsd)
+                put("quotedAt", q.quotedAt)
+                put("registeredBy", q.registeredBy)
+                put("photoBase64", q.photoBase64)
+                put("notes", q.notes)
+                put("barcode", q.barcode)
+                put("googleMapsName", q.googleMapsName)
+                q.farmatodoBenchmark?.let { f ->
+                    val fObj = JSONObject().apply {
+                        put("id", f.id)
+                        put("name", f.name)
+                        put("brand", f.brand)
+                        put("fullPriceVes", f.fullPriceVes)
+                        put("offerPriceVes", f.offerPriceVes)
+                        put("priceUsd", f.priceUsd)
+                        put("offerPriceUsd", f.offerPriceUsd)
+                        put("mediaImageUrl", f.mediaImageUrl)
+                        put("urlSlug", f.urlSlug)
+                        put("barcode", f.barcode)
                     }
+                    put("farmatodo", fObj)
                 }
-                array.put(obj)
             }
-            prefs.edit().putString(KEY_RADAR_QUOTES_CACHE, array.toString()).apply()
-        } catch (_: Exception) {}
+            array.put(obj)
+        }
+        return array.toString()
     }
 
-    fun getRadarQuotesCache(): List<com.example.llegadadelbebe.domain.model.ProductPriceQuote> {
-        val raw = prefs.getString(KEY_RADAR_QUOTES_CACHE, null) ?: return emptyList()
+    fun parseQuotesJson(raw: String): List<com.example.llegadadelbebe.domain.model.ProductPriceQuote> {
         return try {
             val array = JSONArray(raw)
             val list = mutableListOf<com.example.llegadadelbebe.domain.model.ProductPriceQuote>()
@@ -313,8 +310,38 @@ class LocalPreferences(context: Context) {
         }
     }
 
-    fun getKnownStoreLocations(): List<com.example.llegadadelbebe.domain.model.KnownStoreLocation> {
-        val raw = prefs.getString(KEY_KNOWN_STORES_CACHE, null) ?: return emptyList()
+    fun saveRadarQuotesCache(quotes: List<com.example.llegadadelbebe.domain.model.ProductPriceQuote>) {
+        try {
+            val json = quotesToJson(quotes)
+            prefs.edit().putString(KEY_RADAR_QUOTES_CACHE, json).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun getRadarQuotesCache(): List<com.example.llegadadelbebe.domain.model.ProductPriceQuote> {
+        val raw = prefs.getString(KEY_RADAR_QUOTES_CACHE, null) ?: return emptyList()
+        return parseQuotesJson(raw)
+    }
+
+    fun knownStoresToJson(stores: List<com.example.llegadadelbebe.domain.model.KnownStoreLocation>): String {
+        val array = JSONArray()
+        for (s in stores) {
+            val obj = JSONObject().apply {
+                put("id", s.id)
+                put("name", s.name)
+                put("address", s.address)
+                put("latitude", s.latitude)
+                put("longitude", s.longitude)
+                put("visitCount", s.visitCount)
+                put("lastVisitedAt", s.lastVisitedAt)
+                put("googleMapsName", s.googleMapsName)
+                put("isUserConfirmed", s.isUserConfirmed)
+            }
+            array.put(obj)
+        }
+        return array.toString()
+    }
+
+    fun parseKnownStoresJson(raw: String): List<com.example.llegadadelbebe.domain.model.KnownStoreLocation> {
         return try {
             val array = JSONArray(raw)
             val list = mutableListOf<com.example.llegadadelbebe.domain.model.KnownStoreLocation>()
@@ -340,24 +367,15 @@ class LocalPreferences(context: Context) {
         }
     }
 
+    fun getKnownStoreLocations(): List<com.example.llegadadelbebe.domain.model.KnownStoreLocation> {
+        val raw = prefs.getString(KEY_KNOWN_STORES_CACHE, null) ?: return emptyList()
+        return parseKnownStoresJson(raw)
+    }
+
     fun saveAllKnownStores(stores: List<com.example.llegadadelbebe.domain.model.KnownStoreLocation>) {
         try {
-            val array = JSONArray()
-            for (s in stores) {
-                val obj = JSONObject().apply {
-                    put("id", s.id)
-                    put("name", s.name)
-                    put("address", s.address)
-                    put("latitude", s.latitude)
-                    put("longitude", s.longitude)
-                    put("visitCount", s.visitCount)
-                    put("lastVisitedAt", s.lastVisitedAt)
-                    put("googleMapsName", s.googleMapsName)
-                    put("isUserConfirmed", s.isUserConfirmed)
-                }
-                array.put(obj)
-            }
-            prefs.edit().putString(KEY_KNOWN_STORES_CACHE, array.toString()).apply()
+            val json = knownStoresToJson(stores)
+            prefs.edit().putString(KEY_KNOWN_STORES_CACHE, json).apply()
         } catch (_: Exception) {}
     }
 
@@ -386,42 +404,38 @@ class LocalPreferences(context: Context) {
             .apply()
     }
 
-    fun saveMedicationsCache(medications: List<com.example.llegadadelbebe.domain.model.PrenatalMedication>) {
-        try {
-            val array = JSONArray()
-            for (m in medications) {
-                val obj = JSONObject().apply {
-                    put("id", m.id)
-                    put("name", m.name)
-                    put("activeIngredient", m.activeIngredient)
-                    put("dose", m.dose)
-                    put("frequencyHours", m.frequencyHours)
-                    val timesArray = JSONArray()
-                    m.scheduleTimes.forEach { timesArray.put(it) }
-                    put("scheduleTimes", timesArray)
-                    put("foodInstructions", m.foodInstructions)
-                    put("clinicalWarnings", m.clinicalWarnings)
-                    put("pillsRemaining", m.pillsRemaining)
-                    put("totalPillsInPackage", m.totalPillsInPackage)
-                    put("isMandatory", m.isMandatory)
-                    put("photoBase64", m.photoBase64)
-                    put("notes", m.notes)
-                    put("lastTakenDate", m.lastTakenDate)
-                    put("lastTakenTime", m.lastTakenTime)
-                    put("lastConfirmedBy", m.lastConfirmedBy)
-                    put("updatedAt", m.updatedAt)
-                }
-                array.put(obj)
+    fun medicationsToJson(medications: List<com.example.llegadadelbebe.domain.model.PrenatalMedication>): String {
+        val array = JSONArray()
+        for (m in medications) {
+            val obj = JSONObject().apply {
+                put("id", m.id)
+                put("name", m.name)
+                put("activeIngredient", m.activeIngredient)
+                put("dose", m.dose)
+                put("frequencyHours", m.frequencyHours)
+                val timesArray = JSONArray()
+                m.scheduleTimes.forEach { timesArray.put(it) }
+                put("scheduleTimes", timesArray)
+                put("foodInstructions", m.foodInstructions)
+                put("clinicalWarnings", m.clinicalWarnings)
+                put("pillsRemaining", m.pillsRemaining)
+                put("totalPillsInPackage", m.totalPillsInPackage)
+                put("isMandatory", m.isMandatory)
+                put("photoBase64", m.photoBase64)
+                put("notes", m.notes)
+                put("lastTakenDate", m.lastTakenDate)
+                put("lastTakenTime", m.lastTakenTime)
+                put("lastConfirmedBy", m.lastConfirmedBy)
+                put("updatedAt", m.updatedAt)
             }
-            prefs.edit().putString(KEY_MEDICATIONS_CACHE, array.toString()).apply()
-        } catch (_: Exception) {}
+            array.put(obj)
+        }
+        return array.toString()
     }
 
-    fun getMedicationsCache(): List<com.example.llegadadelbebe.domain.model.PrenatalMedication> {
-        val raw = prefs.getString(KEY_MEDICATIONS_CACHE, null) ?: return getDefaultPrenatalMedications()
+    fun parseMedicationsJson(jsonStr: String): List<com.example.llegadadelbebe.domain.model.PrenatalMedication> {
         return try {
-            val array = JSONArray(raw)
-            if (array.length() == 0) return getDefaultPrenatalMedications()
+            val array = JSONArray(jsonStr)
             val list = mutableListOf<com.example.llegadadelbebe.domain.model.PrenatalMedication>()
             for (i in 0 until array.length()) {
                 val obj = array.getJSONObject(i)
@@ -456,8 +470,21 @@ class LocalPreferences(context: Context) {
             }
             list
         } catch (_: Exception) {
-            getDefaultPrenatalMedications()
+            emptyList()
         }
+    }
+
+    fun saveMedicationsCache(medications: List<com.example.llegadadelbebe.domain.model.PrenatalMedication>) {
+        try {
+            val json = medicationsToJson(medications)
+            prefs.edit().putString(KEY_MEDICATIONS_CACHE, json).apply()
+        } catch (_: Exception) {}
+    }
+
+    fun getMedicationsCache(): List<com.example.llegadadelbebe.domain.model.PrenatalMedication> {
+        val raw = prefs.getString(KEY_MEDICATIONS_CACHE, null) ?: return getDefaultPrenatalMedications()
+        val parsed = parseMedicationsJson(raw)
+        return if (parsed.isEmpty()) getDefaultPrenatalMedications() else parsed
     }
 
     private fun getDefaultPrenatalMedications(): List<com.example.llegadadelbebe.domain.model.PrenatalMedication> {
@@ -517,6 +544,20 @@ class LocalPreferences(context: Context) {
         return prefs.getLong(KEY_LAST_ENGAGEMENT_NOTIF_EPOCH_DAY, 0L)
     }
 
+    fun addDeletedProductId(id: String) {
+        val current = getDeletedProductIds().toMutableSet()
+        current.add(id)
+        prefs.edit().putStringSet(KEY_DELETED_PRODUCT_IDS, current).apply()
+    }
+
+    fun getDeletedProductIds(): Set<String> {
+        return prefs.getStringSet(KEY_DELETED_PRODUCT_IDS, emptySet()) ?: emptySet()
+    }
+
+    fun clearDeletedProductIds() {
+        prefs.edit().remove(KEY_DELETED_PRODUCT_IDS).apply()
+    }
+
     companion object {
         private const val PREFS_NAME = "llegada_del_bebe_prefs"
         private const val KEY_BABY_NAME = "baby_name"
@@ -537,5 +578,6 @@ class LocalPreferences(context: Context) {
         private const val KEY_MEDICATIONS_CACHE = "medications_cache_json"
         private const val KEY_LAST_APP_OPEN_MILLIS = "last_app_open_millis"
         private const val KEY_LAST_ENGAGEMENT_NOTIF_EPOCH_DAY = "last_engagement_notif_epoch_day"
+        private const val KEY_DELETED_PRODUCT_IDS = "deleted_product_ids"
     }
 }

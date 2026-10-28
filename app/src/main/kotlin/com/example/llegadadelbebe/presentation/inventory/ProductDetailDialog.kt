@@ -817,11 +817,5 @@ fun ProductDetailDialog(
 }
 
 fun decodeBase64ToBitmap(base64Str: String): android.graphics.Bitmap? {
-    if (base64Str.isBlank()) return null
-    return try {
-        val bytes = Base64.decode(base64Str, Base64.DEFAULT)
-        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-    } catch (_: Exception) {
-        null
-    }
+    return com.example.llegadadelbebe.core.ui.ImageBitmapCache.decodeBase64ToBitmap(base64Str)
 }

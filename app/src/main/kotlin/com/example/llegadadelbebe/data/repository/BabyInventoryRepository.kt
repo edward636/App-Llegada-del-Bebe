@@ -87,6 +87,7 @@ class BabyInventoryRepository(
         val updated = _products.value.filterNot { it.id == productId }
         _products.value = updated
         localPreferences?.saveInventoryCache(updated)
+        localPreferences?.addDeletedProductId(productId)
 
         if (targetUrl.isNotBlank() && itemToRemove != null) {
             scope.launch {
@@ -99,6 +100,8 @@ class BabyInventoryRepository(
 
     /**
      * Sincroniza y descarga el inventario completo desde la hoja de Google Sheets.
+     * Implementa un Smart Two-Way Merge por [BabyProduct.updatedAt] para evitar pisar
+     * cambios o creaciones realizadas localmente mientras no había conexión a internet.
      */
     suspend fun syncFromGoogleSheets(googleSheetUrl: String): Result<Unit> {
         val targetUrl = googleSheetUrl.ifBlank { activeGoogleSheetUrl }
@@ -110,20 +113,76 @@ class BabyInventoryRepository(
         return if (result.isSuccess) {
             _syncStatus.value = CloudSyncStatus.ONLINE
             val remoteItems = result.getOrNull() ?: emptyList()
-            if (remoteItems.isNotEmpty()) {
-                val currentLocalMap = _products.value.associateBy { it.id }
-                val merged = remoteItems.map { remote ->
-                    val local = currentLocalMap[remote.id]
-                    if (remote.photoBase64.isBlank() && local != null && local.photoBase64.isNotBlank()) {
-                        remote.copy(
-                            photoBase64 = local.photoBase64,
-                            rawPhotoBase64 = local.rawPhotoBase64
-                        )
-                    } else remote
+            val deletedIds = localPreferences?.getDeletedProductIds() ?: emptySet()
+            val currentLocalMap = _products.value.associateBy { it.id }.toMutableMap()
+            val mergedProducts = mutableListOf<BabyProduct>()
+            val itemsToUpload = mutableListOf<BabyProduct>()
+
+            // 1. Procesar elementos que vinieron de la nube
+            for (remote in remoteItems) {
+                if (remote.id in deletedIds) {
+                    continue
                 }
-                _products.value = merged
-                localPreferences?.saveInventoryCache(merged)
+                val local = currentLocalMap.remove(remote.id)
+                if (local == null) {
+                    mergedProducts.add(remote)
+                } else {
+                    if (local.updatedAt > remote.updatedAt) {
+                        val finalLocal = if (local.photoBase64.isBlank() && remote.photoBase64.isNotBlank()) {
+                            local.copy(photoBase64 = remote.photoBase64)
+                        } else local
+                        mergedProducts.add(finalLocal)
+                        itemsToUpload.add(finalLocal)
+                    } else {
+                        val finalRemote = if (remote.photoBase64.isBlank() && local.photoBase64.isNotBlank()) {
+                            remote.copy(
+                                photoBase64 = local.photoBase64,
+                                rawPhotoBase64 = local.rawPhotoBase64
+                            )
+                        } else remote
+                        mergedProducts.add(finalRemote)
+                    }
+                }
             }
+
+            // 2. Procesar productos creados localmente sin internet que no existen aún en la nube
+            for ((localId, localItem) in currentLocalMap) {
+                if (localId !in deletedIds) {
+                    mergedProducts.add(localItem)
+                    itemsToUpload.add(localItem)
+                }
+            }
+
+            _products.value = mergedProducts
+            localPreferences?.saveInventoryCache(mergedProducts)
+
+            // 3. Subir en segundo plano productos locales más recientes o creados offline
+            if (itemsToUpload.isNotEmpty()) {
+                scope.launch {
+                    itemsToUpload.forEach { item ->
+                        sheetsService.saveProduct(targetUrl, item)
+                    }
+                }
+            }
+
+            // 4. Limpiar eliminaciones pendientes en la nube
+            if (deletedIds.isNotEmpty()) {
+                scope.launch {
+                    deletedIds.forEach { delId ->
+                        sheetsService.deleteProductRemote(
+                            targetUrl,
+                            BabyProduct(
+                                id = delId,
+                                name = "Deleted Item",
+                                category = ProductCategory.CLOTHING,
+                                registeredBy = "App"
+                            )
+                        )
+                    }
+                    localPreferences?.clearDeletedProductIds()
+                }
+            }
+
             Result.success(Unit)
         } else {
             _syncStatus.value = CloudSyncStatus.OFFLINE
@@ -136,12 +195,14 @@ class BabyInventoryRepository(
      */
     private fun getInitialStarterProducts(): List<BabyProduct> = listOf(
         BabyProduct(
-            id = UUID.randomUUID().toString(),
+            id = "seed-carters-bodies-rn",
             name = "Set Bodies Algodón Pima Manga Corta (Pack 5)",
             brand = "Carter's",
             model = "Baby Boy Safari",
             category = ProductCategory.CLOTHING,
             stageSize = "RN",
+            packageCount = 1,
+            unitsPerPackage = 5,
             quantityCurrent = 5,
             quantityTarget = 8,
             status = ProductStatus.PURCHASED,
@@ -155,12 +216,14 @@ class BabyInventoryRepository(
             registeredBy = "Mamá (Britney)"
         ),
         BabyProduct(
-            id = UUID.randomUUID().toString(),
+            id = "seed-pampers-rn",
             name = "Pañales Recién Nacido (Pack 36)",
             brand = "Pampers",
             model = "Premium Care RN",
             category = ProductCategory.DIAPERS,
             stageSize = "RN",
+            packageCount = 2,
+            unitsPerPackage = 36,
             quantityCurrent = 72,
             quantityTarget = 140,
             status = ProductStatus.PURCHASED,
@@ -174,12 +237,14 @@ class BabyInventoryRepository(
             registeredBy = "Papá (Edward)"
         ),
         BabyProduct(
-            id = UUID.randomUUID().toString(),
+            id = "seed-waterwipes-bio",
             name = "Toallitas Húmedas 99.9% Agua Pura (Pack 4)",
             brand = "WaterWipes",
             model = "Bio Sensitive RN",
             category = ProductCategory.WIPES_HYGIENE,
             stageSize = "0M+",
+            packageCount = 4,
+            unitsPerPackage = 56,
             quantityCurrent = 4,
             quantityTarget = 4,
             status = ProductStatus.PURCHASED,

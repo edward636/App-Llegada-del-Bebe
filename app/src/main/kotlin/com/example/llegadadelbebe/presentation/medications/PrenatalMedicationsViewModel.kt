@@ -35,7 +35,16 @@ class PrenatalMedicationsViewModel(
     private val _isAnalyzingPhoto = MutableStateFlow(false)
     val isAnalyzingPhoto: StateFlow<Boolean> = _isAnalyzingPhoto.asStateFlow()
 
-    val activeUser: StateFlow<String> = MutableStateFlow(localPreferences.getActiveUser())
+    private val _activeUser = MutableStateFlow(localPreferences.getActiveUser())
+    val activeUser: StateFlow<String> = _activeUser.asStateFlow()
+
+    fun setActiveUser(user: String) {
+        _activeUser.value = user
+    }
+
+    fun refreshMedications() {
+        loadMedications()
+    }
 
     val adherenceSummary: StateFlow<MedicationAdherenceSummary> = _medications.map { list ->
         val total = list.size
@@ -56,6 +65,7 @@ class PrenatalMedicationsViewModel(
 
     init {
         loadMedications()
+        syncWithCloud()
     }
 
     private fun loadMedications() {
@@ -94,6 +104,7 @@ class PrenatalMedicationsViewModel(
 
         _medications.value = updatedList
         localPreferences.saveMedicationsCache(updatedList)
+        syncWithCloud()
     }
 
     fun saveMedication(med: PrenatalMedication) {
@@ -107,6 +118,7 @@ class PrenatalMedicationsViewModel(
 
         _medications.value = current
         localPreferences.saveMedicationsCache(current)
+        syncWithCloud()
 
         // Programar alarmas para los horarios configurados
         med.scheduleTimes.forEach { time ->
@@ -129,6 +141,7 @@ class PrenatalMedicationsViewModel(
         val updated = _medications.value.filterNot { it.id == id }
         _medications.value = updated
         localPreferences.saveMedicationsCache(updated)
+        syncWithCloud()
     }
 
     fun analyzeMedicationPhoto(
@@ -149,6 +162,49 @@ class PrenatalMedicationsViewModel(
             } finally {
                 _isAnalyzingPhoto.value = false
             }
+        }
+    }
+
+    fun syncWithCloud(sheetUrl: String = com.example.llegadadelbebe.core.security.SecureConfig.getGoogleSheetUrl()) {
+        if (sheetUrl.isBlank()) return
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val remoteResult = googleSheetsService.fetchSystemRecord(sheetUrl, GoogleSheetsService.SYS_MEDICATIONS)
+            if (remoteResult.isSuccess) {
+                val remotePayload = remoteResult.getOrNull()
+                if (!remotePayload.isNullOrBlank()) {
+                    val remoteList = localPreferences.parseMedicationsJson(remotePayload)
+                    if (remoteList.isNotEmpty()) {
+                        val localMap = _medications.value.associateBy { it.id }.toMutableMap()
+                        val merged = mutableListOf<PrenatalMedication>()
+                        for (remote in remoteList) {
+                            val local = localMap.remove(remote.id)
+                            if (local == null) {
+                                merged.add(remote)
+                            } else {
+                                if (local.updatedAt > remote.updatedAt) {
+                                    merged.add(local)
+                                } else {
+                                    merged.add(remote)
+                                }
+                            }
+                        }
+                        for ((_, localOnly) in localMap) {
+                            merged.add(localOnly)
+                        }
+                        _medications.value = merged
+                        localPreferences.saveMedicationsCache(merged)
+                    }
+                }
+            }
+
+            // Subir el estado unificado a la nube
+            val jsonPayload = localPreferences.medicationsToJson(_medications.value)
+            googleSheetsService.saveSystemRecord(
+                webAppUrl = sheetUrl,
+                systemId = GoogleSheetsService.SYS_MEDICATIONS,
+                name = "Medicamentos Prenatales",
+                jsonPayload = jsonPayload
+            )
         }
     }
 }

@@ -154,7 +154,7 @@ fun HomeScreen(
         // 2. ✨ MENSAJERO DIARIO CON IA: Mensaje tierno para hoy cruzado con el desarrollo y la base de datos
         DailyAiWisdomCard(
             wisdom = dailyWisdom,
-            onRefresh = { viewModel.refreshDailyWisdom(geminiApiKey, activeUser) }
+            onRefresh = { viewModel.refreshDailyWisdom(geminiApiKey, activeUser, forceRefresh = true) }
         )
 
         // 3. DIAL DE GESTACIÓN Y CUENTA REGRESIVA CON MICRO-ANIMACIÓN

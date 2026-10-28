@@ -47,9 +47,6 @@ import com.example.llegadadelbebe.presentation.zodiac.FamilySynastryScreen
 import com.example.llegadadelbebe.presentation.zodiac.FamilySynastryViewModel
 import kotlinx.coroutines.launch
 
-const val APP_VERSION_CODE = 18
-const val APP_VERSION_NAME = "1.4.0"
-
 @Composable
 fun MainNavigation() {
     val context = LocalContext.current
@@ -123,8 +120,7 @@ fun MainNavigation() {
         sharedRepository.initializeSheetUrl(googleSheetUrlState)
 
         val updateResult = OtaUpdateManager.checkForUpdate(
-            currentVersionName = APP_VERSION_NAME,
-            currentVersionCode = APP_VERSION_CODE,
+            context = context,
             checkUrl = googleSheetUrlState
         )
         if (updateResult.isSuccess) {
@@ -138,7 +134,7 @@ fun MainNavigation() {
     }
 
     val homeViewModel: HomeViewModel = viewModel {
-        HomeViewModel(sharedRepository).apply {
+        HomeViewModel(sharedRepository, localPreferences).apply {
             updateBabySettings(babyNameState, lmpDateState)
         }
     }
@@ -239,6 +235,9 @@ fun MainNavigation() {
                         localPreferences.saveActiveUser(newUser)
                         homeViewModel.updateBabySettings(newName, newLmp)
                         inventoryViewModel.setActiveUser(newUser)
+                        radarViewModel.setActiveUser(newUser)
+                        medicationsViewModel.setActiveUser(newUser)
+                        synastryViewModel.refreshCalculations()
                     },
                     onBack = { backStack.removeLastOrNull() }
                 )
