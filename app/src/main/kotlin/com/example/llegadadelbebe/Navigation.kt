@@ -48,7 +48,10 @@ import com.example.llegadadelbebe.presentation.zodiac.FamilySynastryViewModel
 import kotlinx.coroutines.launch
 
 @Composable
-fun MainNavigation() {
+fun MainNavigation(
+    currentThemeMode: String = com.example.llegadadelbebe.ui.theme.ThemeModes.SYSTEM,
+    onThemeModeChanged: (String) -> Unit = {}
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
@@ -226,6 +229,8 @@ fun MainNavigation() {
                     babyName = babyNameState,
                     currentLmp = lmpDateState,
                     currentUser = activeUserState,
+                    currentThemeMode = currentThemeMode,
+                    onThemeModeChanged = onThemeModeChanged,
                     onSaveBabySettings = { newName, newLmp, newUser ->
                         babyNameState = newName
                         lmpDateState = newLmp

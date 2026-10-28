@@ -1,6 +1,8 @@
 package com.example.llegadadelbebe.presentation.settings
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,6 +69,8 @@ fun SettingsScreen(
     babyName: String,
     currentLmp: LocalDate,
     currentUser: String,
+    currentThemeMode: String = com.example.llegadadelbebe.ui.theme.ThemeModes.SYSTEM,
+    onThemeModeChanged: (String) -> Unit = {},
     onSaveBabySettings: (name: String, lmp: LocalDate, user: String) -> Unit,
     onBack: () -> Unit
 ) {
@@ -230,14 +234,13 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.primary
                     )
 
-                    OutlinedTextField(
+                    com.example.llegadadelbebe.core.ui.BabyTextField(
                         value = name,
                         onValueChange = { name = it },
-                        label = { Text("Nombre o Apodo del Bebé") },
-                        placeholder = { Text("Ej: Liam, Mateo, Thiago") },
-                        modifier = Modifier.fillMaxWidth(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp)
+                        label = "Nombre o Apodo del Bebé",
+                        placeholder = "Ej: Liam, Mateo, Thiago",
+                        leadingEmoji = "👶",
+                        modifier = Modifier.fillMaxWidth()
                     )
 
                     Text(
@@ -394,6 +397,49 @@ fun SettingsScreen(
                         StatusChip(label = "Google Sheets", status = "🟢 Automático")
                         StatusChip(label = "Gemini 3.8", status = "🟢 Cámara Activa")
                     }
+                }
+            }
+
+            // 3. Tema Visual de la App (Modo Claro vs Modo Oscuro AMOLED)
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = "🎨 Tema Visual y Pantalla AMOLED",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "Optimizado especialmente para pantallas OLED/AMOLED de 120Hz (HyperOS y ColorOS).",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    ThemeOptionCard(
+                        title = "🌙 Modo Oscuro AMOLED (Recomendado)",
+                        description = "Negro absoluto #000000 con apagado físico de píxeles para máximo ahorro de batería y contraste perfecto.",
+                        isSelected = currentThemeMode == com.example.llegadadelbebe.ui.theme.ThemeModes.AMOLED_DARK,
+                        onClick = { onThemeModeChanged(com.example.llegadadelbebe.ui.theme.ThemeModes.AMOLED_DARK) }
+                    )
+
+                    ThemeOptionCard(
+                        title = "☀️ Modo Día Claro",
+                        description = "Fondo blanco cremoso suave de alta legibilidad para exteriores o luz de día.",
+                        isSelected = currentThemeMode == com.example.llegadadelbebe.ui.theme.ThemeModes.LIGHT,
+                        onClick = { onThemeModeChanged(com.example.llegadadelbebe.ui.theme.ThemeModes.LIGHT) }
+                    )
+
+                    ThemeOptionCard(
+                        title = "⚙️ Automático del Sistema",
+                        description = "Se adapta automáticamente a la configuración de Android de tu teléfono.",
+                        isSelected = currentThemeMode == com.example.llegadadelbebe.ui.theme.ThemeModes.SYSTEM,
+                        onClick = { onThemeModeChanged(com.example.llegadadelbebe.ui.theme.ThemeModes.SYSTEM) }
+                    )
                 }
             }
 
@@ -619,6 +665,50 @@ fun StatusChip(label: String, status: String) {
         Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) {
             Text(text = label, style = MaterialTheme.typography.labelSmall)
             Text(text = status, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+private fun ThemeOptionCard(
+    title: String,
+    description: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val borderColor = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+    val bgColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        color = bgColor,
+        border = BorderStroke(if (isSelected) 2.dp else 1.dp, borderColor)
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = if (isSelected) "🔘" else "⚪",
+                fontSize = 18.sp
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

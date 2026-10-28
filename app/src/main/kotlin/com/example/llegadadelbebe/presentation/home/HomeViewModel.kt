@@ -13,12 +13,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import java.time.LocalDate
 
 import com.example.llegadadelbebe.core.storage.LocalPreferences
 import com.example.llegadadelbebe.data.remote.GeminiClient
+import com.example.llegadadelbebe.domain.usecase.OmniDashboardSnapshot
+import com.example.llegadadelbebe.domain.usecase.OmniPregnancyContextUseCase
 import kotlinx.coroutines.launch
 
 data class HomeSummary(
@@ -79,6 +82,52 @@ class HomeViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = HomeSummary(3, 3, 0, 0)
     )
+
+    private val omniUseCase = OmniPregnancyContextUseCase()
+
+    val omniSnapshot: StateFlow<OmniDashboardSnapshot> = combine(
+        _lmpDate,
+        repository.products
+    ) { lmp, prods ->
+        val meds = localPreferences?.getMedicationsCache() ?: emptyList()
+        val quotes = localPreferences?.getRadarQuotesCache() ?: emptyList()
+        val bagIds = localPreferences?.getHospitalBagCheckedIds() ?: emptySet()
+        val bcv = localPreferences?.getLastBcvRate() ?: 1.0
+        omniUseCase.computeSnapshot(lmp, prods, meds, quotes, bagIds, bcv)
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = omniUseCase.computeSnapshot(
+            _lmpDate.value,
+            repository.products.value,
+            localPreferences?.getMedicationsCache() ?: emptyList(),
+            localPreferences?.getRadarQuotesCache() ?: emptyList(),
+            localPreferences?.getHospitalBagCheckedIds() ?: emptySet(),
+            localPreferences?.getLastBcvRate() ?: 1.0
+        )
+    )
+
+    private val _isGeneratingDiagnosis = MutableStateFlow(false)
+    val isGeneratingDiagnosis: StateFlow<Boolean> = _isGeneratingDiagnosis.asStateFlow()
+
+    private val _diagnosisReport = MutableStateFlow<String?>(null)
+    val diagnosisReport: StateFlow<String?> = _diagnosisReport.asStateFlow()
+
+    fun generateOmniDiagnosis(apiKey: String) {
+        if (apiKey.isBlank()) return
+        viewModelScope.launch {
+            _isGeneratingDiagnosis.value = true
+            try {
+                val prompt = omniUseCase.buildAiPrompt(omniSnapshot.value, _babyName.value)
+                val result = geminiClient.generateTextDiagnosis(prompt, apiKey)
+                _diagnosisReport.value = result.getOrNull() ?: "No se pudo generar el diagnóstico con Gemini. Revisa la conexión."
+            } catch (e: Exception) {
+                _diagnosisReport.value = "Error al consultar Gemini: ${e.localizedMessage}"
+            } finally {
+                _isGeneratingDiagnosis.value = false
+            }
+        }
+    }
 
     private val _dailyWisdom = MutableStateFlow(
         DailyAiWisdom(

@@ -9,6 +9,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -619,7 +621,7 @@ fun ProductDetailDialog(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            OutlinedTextField(
+                            com.example.llegadadelbebe.core.ui.BabyTextField(
                                 value = priceInputUsd,
                                 onValueChange = { input ->
                                     priceInputUsd = input
@@ -636,13 +638,14 @@ fun ProductDetailDialog(
                                         priceInputVes = ""
                                     }
                                 },
-                                label = { Text("Precio USD ($)") },
-                                placeholder = { Text("Ej: 24.50") },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp)
+                                label = "Precio USD ($)",
+                                placeholder = "Ej: 24.50",
+                                prefixText = "$",
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                modifier = Modifier.weight(1f)
                             )
 
-                            OutlinedTextField(
+                            com.example.llegadadelbebe.core.ui.BabyTextField(
                                 value = priceInputVes,
                                 onValueChange = { input ->
                                     priceInputVes = input
@@ -660,10 +663,11 @@ fun ProductDetailDialog(
                                         priceInputUsd = ""
                                     }
                                 },
-                                label = { Text("Precio Bs. (BCV)") },
-                                placeholder = { Text("Ej: 21500") },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(10.dp)
+                                label = "Precio Bs (BCV)",
+                                placeholder = "Ej: 2150",
+                                prefixText = "Bs",
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                                modifier = Modifier.weight(1f)
                             )
                         }
 

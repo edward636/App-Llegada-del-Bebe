@@ -642,62 +642,62 @@ fun MedicationEditorDialog(
                     }
                 }
 
-                OutlinedTextField(
+                com.example.llegadadelbebe.core.ui.BabyTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Nombre Comercial (ej: Ácido Fólico)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Nombre Comercial (ej: Ácido Fólico)",
+                    leadingEmoji = "💊",
+                    modifier = Modifier.fillMaxWidth()
                 )
 
-                OutlinedTextField(
+                com.example.llegadadelbebe.core.ui.BabyTextField(
                     value = activeIngredient,
                     onValueChange = { activeIngredient = it },
-                    label = { Text("Principio Activo y Concentración (ej: 1 mg)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Principio Activo (ej: 1 mg)",
+                    leadingEmoji = "🧪",
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
+                    com.example.llegadadelbebe.core.ui.BabyTextField(
                         value = dose,
                         onValueChange = { dose = it },
-                        label = { Text("Dosis (ej: 1 tableta)") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
+                        label = "Dosis (ej: 1 tableta)",
+                        leadingEmoji = "🥄",
+                        modifier = Modifier.weight(1f)
                     )
-                    OutlinedTextField(
+                    com.example.llegadadelbebe.core.ui.BabyTextField(
                         value = timeText,
                         onValueChange = { timeText = it },
-                        label = { Text("Hora (ej: 08:00)") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
+                        label = "Hora (ej: 08:00)",
+                        leadingEmoji = "⏰",
+                        modifier = Modifier.weight(1f)
                     )
                 }
 
-                OutlinedTextField(
+                com.example.llegadadelbebe.core.ui.BabyTextField(
                     value = foodInstructions,
                     onValueChange = { foodInstructions = it },
-                    label = { Text("Indicación con Comidas (ej: En ayunas, lejos de lácteos)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Indicación con Comidas",
+                    leadingEmoji = "🍽️",
+                    modifier = Modifier.fillMaxWidth()
                 )
 
-                OutlinedTextField(
+                com.example.llegadadelbebe.core.ui.BabyTextField(
                     value = clinicalWarnings,
                     onValueChange = { clinicalWarnings = it },
-                    label = { Text("Advertencia / Interacción (ej: Separar del Calcio)") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Advertencia / Interacción",
+                    leadingEmoji = "⚠️",
+                    modifier = Modifier.fillMaxWidth()
                 )
 
-                OutlinedTextField(
+                com.example.llegadadelbebe.core.ui.BabyTextField(
                     value = pillsRemaining.toString(),
                     onValueChange = { pillsRemaining = it.toIntOrNull()?.coerceAtLeast(0) ?: 0 },
-                    label = { Text("Pastillas restantes en la caja") },
+                    label = "Pastillas restantes en la caja",
+                    leadingEmoji = "📦",
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 Spacer(modifier = Modifier.height(4.dp))

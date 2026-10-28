@@ -529,13 +529,13 @@ fun RadarQuotesTabContent(
     onDeleteQuote: (String) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        OutlinedTextField(
+        com.example.llegadadelbebe.core.ui.BabyTextField(
             value = searchQuery,
             onValueChange = onSearchChange,
-            label = { Text("Buscar por producto, marca, tienda o barcode...") },
-            modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            shape = RoundedCornerShape(12.dp)
+            label = "Buscar en Radar de Precios",
+            placeholder = "Producto, marca, tienda o barcode...",
+            leadingEmoji = "🔎",
+            modifier = Modifier.fillMaxWidth()
         )
 
         Spacer(modifier = Modifier.height(6.dp))

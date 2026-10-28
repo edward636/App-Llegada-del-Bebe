@@ -74,6 +74,9 @@ fun HomeScreen(
     val summary by viewModel.summary.collectAsStateWithLifecycle()
     val babyName by viewModel.babyName.collectAsStateWithLifecycle()
     val dailyWisdom by viewModel.dailyWisdom.collectAsStateWithLifecycle()
+    val omniSnapshot by viewModel.omniSnapshot.collectAsStateWithLifecycle()
+    val isGeneratingDiagnosis by viewModel.isGeneratingDiagnosis.collectAsStateWithLifecycle()
+    val diagnosisReport by viewModel.diagnosisReport.collectAsStateWithLifecycle()
     val isMom = activeUser.contains("Mamá", ignoreCase = true)
 
     LaunchedEffect(activeUser) {
@@ -160,7 +163,18 @@ fun HomeScreen(
         // 3. DIAL DE GESTACIÓN Y CUENTA REGRESIVA CON MICRO-ANIMACIÓN
         PregnancyCountdownCard(stats = stats)
 
-        // 4. DOCK FLOTANTE DE ACCESOS RÁPIDOS (Radar, Vitaminas, Inventario, Sinastría)
+        // 4. 🌱 FRUTA & ANIMAL COMPAÑERO: Referencia visual interactiva del tamaño del bebé
+        BabyGrowthVisualCard(currentWeeks = stats.currentWeeks)
+
+        // 5. 🎯 TABLERO DE CONTROL 360° (Índice de Preparación y Diagnóstico con Gemini)
+        OmniReadinessCard(
+            snapshot = omniSnapshot,
+            isGeneratingReport = isGeneratingDiagnosis,
+            reportText = diagnosisReport,
+            onGenerateReport = { viewModel.generateOmniDiagnosis(geminiApiKey) }
+        )
+
+        // 6. DOCK FLOTANTE DE ACCESOS RÁPIDOS (Radar, Vitaminas, Inventario, Sinastría)
         QuickActionsDock(
             onRadar = onNavigateToRadar,
             onMedications = onNavigateToMedications,
@@ -168,14 +182,14 @@ fun HomeScreen(
             onSynastry = onNavigateToSynastry
         )
 
-        // 5. ESTADO DEL INVENTARIO
+        // 7. ESTADO DEL INVENTARIO
         InventorySummaryCard(
             summary = summary,
             onViewAllClick = onNavigateToInventory,
             onAuditClick = onNavigateToConsumables
         )
 
-        // 6. SIGNO DEL BEBÉ & TRÍADA ASTRAL
+        // 8. SIGNO DEL BEBÉ & TRÍADA ASTRAL
         ZodiacCard(
             zodiac = zodiac,
             dueDateStr = stats.estimatedDueDate.toString(),
@@ -351,13 +365,14 @@ fun PregnancyCountdownCard(stats: PregnancyStats) {
                 color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "📏 Tamaño hoy: ", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                     Text(
-                        text = "${stats.babySizeComparison} • ${stats.babyWeightEstimate}",
+                        text = "🌱 ${stats.growthMilestone.fruitEmoji} ${stats.growthMilestone.fruitName} • ${stats.growthMilestone.animalEmoji} ${stats.growthMilestone.animalName}",
+                        fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )

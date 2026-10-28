@@ -430,29 +430,27 @@ fun ConfirmGeminiProductDialog(
                 }
 
                 // 4. Nombre del Producto
-                OutlinedTextField(
+                com.example.llegadadelbebe.core.ui.BabyTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("Nombre del Producto") },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    label = "Nombre del Producto",
+                    leadingEmoji = "📦",
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 // Marca y Modelo
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(
+                    com.example.llegadadelbebe.core.ui.BabyTextField(
                         value = brand,
                         onValueChange = { brand = it },
-                        label = { Text("Marca") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
+                        label = "Marca",
+                        modifier = Modifier.weight(1f)
                     )
-                    OutlinedTextField(
+                    com.example.llegadadelbebe.core.ui.BabyTextField(
                         value = model,
                         onValueChange = { model = it },
-                        label = { Text("Modelo / Presentación") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
+                        label = "Modelo / Presentación",
+                        modifier = Modifier.weight(1f)
                     )
                 }
 

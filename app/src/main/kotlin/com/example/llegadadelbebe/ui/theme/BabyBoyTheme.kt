@@ -1,52 +1,80 @@
 package com.example.llegadadelbebe.ui.theme
 
-import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
 /**
- * Paleta de colores "Baby Boy" moderna, tierna y accesible (Material 3).
- * Tonos: Azul cielo suave, menta pastel, crema cálido y contrastes legibles.
+ * Paleta de colores "Baby Boy" adaptada con precisión para:
+ * 1. Modo Claro Luminoso (Material 3 tierno y acogedor)
+ * 2. Modo Oscuro AMOLED Puro (Fondo #000000 real con apagado físico de píxeles OLED en HyperOS/ColorOS)
  */
-val BabyBlueLight = Color(0xFFE8F1F5)
-val BabyBluePrimary = Color(0xFF4A90E2)
-val BabyBlueSecondary = Color(0xFF64B5F6)
-val BabyMint = Color(0xFFA8E6CF)
-val BabyCream = Color(0xFFFAF7F2)
-val BabySurface = Color(0xFFFFFFFF)
-val BabyDarkNavy = Color(0xFF1A365D)
-val BabyMutedText = Color(0xFF5A7184)
-val BabyCardBackground = Color(0xFFF4F8FB)
+
+// --- Colores Modo Claro ---
+val BabyLightBackground = Color(0xFFF8FAFC)
+val BabyLightSurface = Color(0xFFFFFFFF)
+val BabyLightCard = Color(0xFFF1F5F9)
+val BabyLightBorder = Color(0xFFE2E8F0)
+val BabyLightPrimary = Color(0xFF0284C7)       // Azul Cielo Intenso
+val BabyLightPrimaryContainer = Color(0xFFE0F2FE)
+val BabyLightOnPrimaryContainer = Color(0xFF0369A1)
+val BabyLightSecondary = Color(0xFF0D9488)     // Menta Fresca
+val BabyLightSecondaryContainer = Color(0xFFCCFBF1)
+val BabyLightTextPrimary = Color(0xFF0F172A)
+val BabyLightTextSecondary = Color(0xFF64748B)
+
+// --- Colores Modo Oscuro AMOLED (Pitch Black #000000) ---
+val AmoledPureBlack = Color(0xFF000000)        // Apagado de píxeles en pantallas OLED
+val AmoledSurface = Color(0xFF060B14)          // Elevación sutil nivel 1
+val AmoledCard = Color(0xFF0C1425)             // Elevación de tarjetas nivel 2
+val AmoledCardBorder = Color(0xFF1E293B)       // Borde nítido para separar tarjetas
+val AmoledPrimary = Color(0xFF38BDF8)          // Azul Cielo Eléctrico (Alto contraste en negro)
+val AmoledPrimaryContainer = Color(0xFF0C2440)
+val AmoledOnPrimaryContainer = Color(0xFFBAE6FD)
+val AmoledSecondary = Color(0xFF2DD4BF)        // Menta Neón Pastel
+val AmoledSecondaryContainer = Color(0xFF0B332E)
+val AmoledOnSecondaryContainer = Color(0xFF99F6E4)
+val AmoledTextPrimary = Color(0xFFF8FAFC)      // Blanco puro nítido
+val AmoledTextSecondary = Color(0xFF94A3B8)    // Gris pizarra legible
 
 val BabyBoyLightColorScheme = lightColorScheme(
-    primary = BabyBluePrimary,
+    primary = BabyLightPrimary,
     onPrimary = Color.White,
-    primaryContainer = BabyBlueLight,
-    onPrimaryContainer = BabyDarkNavy,
-    secondary = BabyMint,
-    onSecondary = BabyDarkNavy,
-    secondaryContainer = Color(0xFFD8F3DC),
-    onSecondaryContainer = Color(0xFF1B4332),
-    tertiary = BabyBlueSecondary,
+    primaryContainer = BabyLightPrimaryContainer,
+    onPrimaryContainer = BabyLightOnPrimaryContainer,
+    secondary = BabyLightSecondary,
+    onSecondary = Color.White,
+    secondaryContainer = BabyLightSecondaryContainer,
+    onSecondaryContainer = Color(0xFF115E59),
+    tertiary = Color(0xFF3B82F6),
     onTertiary = Color.White,
-    background = BabyCream,
-    onBackground = BabyDarkNavy,
-    surface = BabySurface,
-    onSurface = BabyDarkNavy,
-    surfaceVariant = BabyCardBackground,
-    onSurfaceVariant = BabyMutedText
+    background = BabyLightBackground,
+    onBackground = BabyLightTextPrimary,
+    surface = BabyLightSurface,
+    onSurface = BabyLightTextPrimary,
+    surfaceVariant = BabyLightCard,
+    onSurfaceVariant = BabyLightTextSecondary,
+    outline = BabyLightBorder,
+    outlineVariant = Color(0xFFCBD5E1)
 )
 
-val BabyBoyDarkColorScheme = darkColorScheme(
-    primary = BabyBlueSecondary,
-    onPrimary = Color(0xFF0D253F),
-    primaryContainer = Color(0xFF1A365D),
-    onPrimaryContainer = BabyBlueLight,
-    secondary = BabyMint,
-    onSecondary = Color(0xFF0F382A),
-    background = Color(0xFF121B24),
-    onBackground = Color(0xFFE2E8F0),
-    surface = Color(0xFF1A2634),
-    onSurface = Color(0xFFE2E8F0)
+val BabyBoyAmoledDarkColorScheme = darkColorScheme(
+    primary = AmoledPrimary,
+    onPrimary = Color(0xFF031626),
+    primaryContainer = AmoledPrimaryContainer,
+    onPrimaryContainer = AmoledOnPrimaryContainer,
+    secondary = AmoledSecondary,
+    onSecondary = Color(0xFF022A26),
+    secondaryContainer = AmoledSecondaryContainer,
+    onSecondaryContainer = AmoledOnSecondaryContainer,
+    tertiary = Color(0xFF818CF8),
+    onTertiary = Color(0xFF0F172A),
+    background = AmoledPureBlack,
+    onBackground = AmoledTextPrimary,
+    surface = AmoledSurface,
+    onSurface = AmoledTextPrimary,
+    surfaceVariant = AmoledCard,
+    onSurfaceVariant = AmoledTextSecondary,
+    outline = AmoledCardBorder,
+    outlineVariant = Color(0xFF293548)
 )

@@ -15,7 +15,8 @@ data class PregnancyStats(
     val trimester: Int,
     val progressPercent: Float,
     val babySizeComparison: String,
-    val babyWeightEstimate: String
+    val babyWeightEstimate: String,
+    val growthMilestone: BabyGrowthMilestone = BabyGrowthMilestones.getMilestoneForWeek(currentWeeks)
 )
 
 /**
@@ -67,7 +68,9 @@ object PregnancyCalculator {
 
         val progress = (daysPassed.toFloat() / TOTAL_GESTATIONAL_DAYS).coerceIn(0f, 1f)
 
-        val (sizeDesc, weightDesc) = getBabyMilestone(weeks)
+        val milestone = BabyGrowthMilestones.getMilestoneForWeek(weeks)
+        val sizeDesc = "${milestone.fruitEmoji} ${milestone.fruitName} (~${milestone.lengthCm} cm)"
+        val weightDesc = "~${if (milestone.weightGrams >= 1000) String.format(java.util.Locale.US, "%.1f kg", milestone.weightGrams / 1000.0) else "${milestone.weightGrams.toInt()} g"}"
 
         return PregnancyStats(
             currentWeeks = weeks,
@@ -78,22 +81,8 @@ object PregnancyCalculator {
             trimester = trimester,
             progressPercent = progress,
             babySizeComparison = sizeDesc,
-            babyWeightEstimate = weightDesc
+            babyWeightEstimate = weightDesc,
+            growthMilestone = milestone
         )
-    }
-
-    private fun getBabyMilestone(weeks: Int): Pair<String, String> {
-        return when (weeks) {
-            in 0..7 -> "Semilla de manzana (~5 mm)" to "< 1 g"
-            in 8..11 -> "Fresita (~3 cm)" to "~4 g"
-            in 12..15 -> "Limón dulce (~8 cm)" to "~45 g"
-            in 16..19 -> "Mango tierno (~15 cm)" to "~240 g"
-            in 20..23 -> "Plátano (~26 cm)" to "~430 g"
-            in 24..27 -> "Espiga de maíz (~35 cm)" to "~750 g"
-            in 28..31 -> "Berenjena grande (~38 cm)" to "~1.2 kg"
-            in 32..35 -> "Piña dulce (~43 cm)" to "~1.9 kg"
-            in 36..38 -> "Melón cantaloupe (~48 cm)" to "~2.7 kg"
-            else -> "Sandía lista para nacer (~50 cm)" to "~3.3 kg"
-        }
     }
 }

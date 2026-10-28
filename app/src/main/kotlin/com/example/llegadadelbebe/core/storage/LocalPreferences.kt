@@ -558,6 +558,15 @@ class LocalPreferences(context: Context) {
         prefs.edit().remove(KEY_DELETED_PRODUCT_IDS).apply()
     }
 
+    fun getThemeMode(): String {
+        return prefs.getString(KEY_THEME_MODE, com.example.llegadadelbebe.ui.theme.ThemeModes.SYSTEM)
+            ?: com.example.llegadadelbebe.ui.theme.ThemeModes.SYSTEM
+    }
+
+    fun saveThemeMode(mode: String) {
+        prefs.edit().putString(KEY_THEME_MODE, mode).apply()
+    }
+
     companion object {
         private const val PREFS_NAME = "llegada_del_bebe_prefs"
         private const val KEY_BABY_NAME = "baby_name"
@@ -579,5 +588,6 @@ class LocalPreferences(context: Context) {
         private const val KEY_LAST_APP_OPEN_MILLIS = "last_app_open_millis"
         private const val KEY_LAST_ENGAGEMENT_NOTIF_EPOCH_DAY = "last_engagement_notif_epoch_day"
         private const val KEY_DELETED_PRODUCT_IDS = "deleted_product_ids"
+        private const val KEY_THEME_MODE = "app_theme_mode"
     }
 }

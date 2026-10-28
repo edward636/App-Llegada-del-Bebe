@@ -9,7 +9,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.example.llegadadelbebe.core.storage.LocalPreferences
 import com.example.llegadadelbebe.ui.theme.LlegadaDelBebeTheme
 
 class MainActivity : ComponentActivity() {
@@ -22,14 +27,24 @@ class MainActivity : ComponentActivity() {
                 WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         }
 
+        val localPreferences = LocalPreferences(this)
+
         enableEdgeToEdge()
         setContent {
-            LlegadaDelBebeTheme {
+            var themeMode by remember { mutableStateOf(localPreferences.getThemeMode()) }
+
+            LlegadaDelBebeTheme(themeMode = themeMode) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    MainNavigation()
+                    MainNavigation(
+                        currentThemeMode = themeMode,
+                        onThemeModeChanged = { newMode ->
+                            themeMode = newMode
+                            localPreferences.saveThemeMode(newMode)
+                        }
+                    )
                 }
             }
         }

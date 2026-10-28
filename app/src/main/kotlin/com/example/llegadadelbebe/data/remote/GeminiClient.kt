@@ -776,6 +776,48 @@ class GeminiClient(
             Result.failure(e)
         }
     }
+
+    /**
+     * Genera un diagnóstico o reporte textual completo a partir de un prompt estructurado.
+     */
+    suspend fun generateTextDiagnosis(
+        prompt: String,
+        apiKey: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val jsonPayload = JSONObject().apply {
+                put("contents", JSONArray().apply {
+                    put(JSONObject().apply {
+                        put("parts", JSONArray().apply {
+                            put(JSONObject().apply {
+                                put("text", prompt)
+                            })
+                        })
+                    })
+                })
+                put("generationConfig", JSONObject().apply {
+                    put("temperature", 0.4)
+                })
+            }
+            val response = executePost(jsonPayload.toString(), apiKey)
+            val jsonObject = JSONObject(response)
+            val candidates = jsonObject.optJSONArray("candidates")
+            if (candidates != null && candidates.length() > 0) {
+                val firstCandidate = candidates.getJSONObject(0)
+                val content = firstCandidate.optJSONObject("content")
+                val parts = content?.optJSONArray("parts")
+                if (parts != null && parts.length() > 0) {
+                    val text = parts.getJSONObject(0).optString("text", "")
+                    if (text.isNotBlank()) {
+                        return@withContext Result.success(text)
+                    }
+                }
+            }
+            Result.failure(Exception("Sin respuesta de Gemini"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
 
 data class ParsedMedicationInfo(

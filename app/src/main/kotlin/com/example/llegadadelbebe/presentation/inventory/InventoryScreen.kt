@@ -452,14 +452,14 @@ fun InventoryScreen(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            // Buscador
-            OutlinedTextField(
+            // Buscador estilizado con botón de limpiar y adaptación AMOLED
+            com.example.llegadadelbebe.core.ui.BabyTextField(
                 value = searchQuery,
                 onValueChange = { viewModel.updateSearchQuery(it) },
-                label = { Text("Buscar por nombre, marca, modelo, ingrediente...") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp)
+                label = "Buscar en inventario",
+                placeholder = "Nombre, marca, modelo, ingrediente...",
+                leadingEmoji = "🔍",
+                modifier = Modifier.fillMaxWidth()
             )
 
             Spacer(modifier = Modifier.height(8.dp))
