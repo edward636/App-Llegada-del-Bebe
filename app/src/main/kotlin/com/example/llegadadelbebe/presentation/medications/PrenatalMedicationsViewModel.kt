@@ -134,6 +134,7 @@ class PrenatalMedicationsViewModel(
     }
 
     fun deleteMedication(id: String) {
+        localPreferences.recordDeletedMedicationId(id)
         val med = _medications.value.firstOrNull { it.id == id }
         med?.scheduleTimes?.forEach { time ->
             MedicationAlarmScheduler.cancelMedicationAlarm(getApplication(), id, time)
@@ -168,13 +169,14 @@ class PrenatalMedicationsViewModel(
     fun syncWithCloud(sheetUrl: String = com.example.llegadadelbebe.core.security.SecureConfig.getGoogleSheetUrl()) {
         if (sheetUrl.isBlank()) return
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val deletedIds = localPreferences.getDeletedMedicationIds()
             val remoteResult = googleSheetsService.fetchSystemRecord(sheetUrl, GoogleSheetsService.SYS_MEDICATIONS)
             if (remoteResult.isSuccess) {
                 val remotePayload = remoteResult.getOrNull()
                 if (!remotePayload.isNullOrBlank()) {
-                    val remoteList = localPreferences.parseMedicationsJson(remotePayload)
+                    val remoteList = localPreferences.parseMedicationsJson(remotePayload).filterNot { it.id in deletedIds }
                     if (remoteList.isNotEmpty()) {
-                        val localMap = _medications.value.associateBy { it.id }.toMutableMap()
+                        val localMap = _medications.value.filterNot { it.id in deletedIds }.associateBy { it.id }.toMutableMap()
                         val merged = mutableListOf<PrenatalMedication>()
                         for (remote in remoteList) {
                             val local = localMap.remove(remote.id)
@@ -189,7 +191,9 @@ class PrenatalMedicationsViewModel(
                             }
                         }
                         for ((_, localOnly) in localMap) {
-                            merged.add(localOnly)
+                            if (localOnly.id !in deletedIds) {
+                                merged.add(localOnly)
+                            }
                         }
                         _medications.value = merged
                         localPreferences.saveMedicationsCache(merged)
@@ -197,8 +201,9 @@ class PrenatalMedicationsViewModel(
                 }
             }
 
-            // Subir el estado unificado a la nube
-            val jsonPayload = localPreferences.medicationsToJson(_medications.value)
+            // Subir el estado unificado sin medicamentos eliminados a la nube
+            val activeMedications = _medications.value.filterNot { it.id in deletedIds }
+            val jsonPayload = localPreferences.medicationsToJson(activeMedications)
             googleSheetsService.saveSystemRecord(
                 webAppUrl = sheetUrl,
                 systemId = GoogleSheetsService.SYS_MEDICATIONS,

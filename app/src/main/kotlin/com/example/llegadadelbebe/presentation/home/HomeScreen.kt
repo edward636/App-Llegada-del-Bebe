@@ -42,6 +42,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +59,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.llegadadelbebe.core.ui.FormattedMarkdownText
 import com.example.llegadadelbebe.core.util.PregnancyStats
 import com.example.llegadadelbebe.core.util.ZodiacProfile
+import com.example.llegadadelbebe.domain.usecase.OmniDashboardSnapshot
 
 @Composable
 fun HomeScreen(
@@ -154,19 +158,20 @@ fun HomeScreen(
             }
         }
 
-        // 2. ✨ MENSAJERO DIARIO CON IA: Mensaje tierno para hoy cruzado con el desarrollo y la base de datos
-        DailyAiWisdomCard(
-            wisdom = dailyWisdom,
-            onRefresh = { viewModel.refreshDailyWisdom(geminiApiKey, activeUser, forceRefresh = true) }
-        )
-
-        // 3. DIAL DE GESTACIÓN Y CUENTA REGRESIVA CON MICRO-ANIMACIÓN
+        // 2. DIAL DE GESTACIÓN Y CUENTA REGRESIVA CON MICRO-ANIMACIÓN (Primero en pantalla)
         PregnancyCountdownCard(stats = stats)
 
-        // 4. 🌱 FRUTA & ANIMAL COMPAÑERO: Referencia visual interactiva del tamaño del bebé
+        // 3. 🌱 FRUTA CRIOLLA & FAUNA VENEZOLANA: Referencia visual interactiva del tamaño del bebé
         BabyGrowthVisualCard(currentWeeks = stats.currentWeeks)
 
-        // 5. 🎯 TABLERO DE CONTROL 360° (Índice de Preparación y Diagnóstico con Gemini)
+        // 4. ⏰ RECORDATORIOS Y PRIORIDADES DE HOY (Vitaminas de Britney, Maleta y Alertas)
+        TodayRemindersCard(
+            snapshot = omniSnapshot,
+            onNavigateToMedications = onNavigateToMedications,
+            onNavigateToConsumables = onNavigateToConsumables
+        )
+
+        // 5. 🎯 TABLERO DE CONTROL 360° (Índice de Preparación y Diagnóstico con Gemini 3.8 Flash)
         OmniReadinessCard(
             snapshot = omniSnapshot,
             isGeneratingReport = isGeneratingDiagnosis,
@@ -174,12 +179,10 @@ fun HomeScreen(
             onGenerateReport = { viewModel.generateOmniDiagnosis(geminiApiKey) }
         )
 
-        // 6. DOCK FLOTANTE DE ACCESOS RÁPIDOS (Radar, Vitaminas, Inventario, Sinastría)
-        QuickActionsDock(
-            onRadar = onNavigateToRadar,
-            onMedications = onNavigateToMedications,
-            onInventory = onNavigateToInventory,
-            onSynastry = onNavigateToSynastry
+        // 6. ✨ MENSAJERO DIARIO CON IA: Compacto y desplegable
+        DailyAiWisdomCard(
+            wisdom = dailyWisdom,
+            onRefresh = { viewModel.refreshDailyWisdom(geminiApiKey, activeUser, forceRefresh = true) }
         )
 
         // 7. ESTADO DEL INVENTARIO
@@ -201,6 +204,181 @@ fun HomeScreen(
 }
 
 /**
+ * Tarjeta interactiva de Recordatorios y Prioridades de Hoy.
+ * Muestra el estado en vivo de las vitaminas de Britney, la maleta clínica y alertas críticas.
+ */
+@Composable
+fun TodayRemindersCard(
+    snapshot: OmniDashboardSnapshot,
+    onNavigateToMedications: () -> Unit,
+    onNavigateToConsumables: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "⏰ Recordatorios de Hoy",
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 16.sp,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                ) {
+                    Text(
+                        text = "En Vivo",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            // Fila 1: Tomas de Vitaminas de Britney
+            val isMedsComplete = snapshot.medicationsAdherence.totalMedications > 0 && snapshot.medicationsAdherence.pendingTodayCount == 0
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = if (isMedsComplete) {
+                    Color(0xFF2E7D32).copy(alpha = 0.12f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                },
+                border = BorderStroke(
+                    1.dp,
+                    if (isMedsComplete) {
+                        Color(0xFF2E7D32).copy(alpha = 0.35f)
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                    }
+                ),
+                modifier = Modifier.clickable(onClick = onNavigateToMedications)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = if (isMedsComplete) "✅" else "💊",
+                        fontSize = 24.sp
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = if (snapshot.medicationsAdherence.totalMedications == 0) {
+                                "Sin vitaminas registradas aún"
+                            } else if (isMedsComplete) {
+                                "¡Todas las vitaminas al día!"
+                            } else {
+                                "${snapshot.medicationsAdherence.pendingTodayCount} vitamina(s) pendiente(s) hoy"
+                            },
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = if (snapshot.medicationsAdherence.totalMedications == 0) {
+                                "Toca para agregar el récipe de Britney"
+                            } else {
+                                "${snapshot.medicationsAdherence.takenTodayCount} de ${snapshot.medicationsAdherence.totalMedications} tomadas hoy"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        text = "Ver ➔",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            // Fila 2: Maleta Clínica
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                modifier = Modifier.clickable(onClick = onNavigateToConsumables)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text("🎒", fontSize = 24.sp)
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Maleta para el Día del Parto",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "${snapshot.hospitalBagCheckedCount} de ${snapshot.hospitalBagTotalCount} artículos preparados",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Text(
+                        text = "Revisar ➔",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            // Alerta de déficit prioritario si existe
+            if (snapshot.criticalDeficits.isNotEmpty()) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.25f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.3f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("⚠️", fontSize = 16.sp)
+                        Text(
+                            text = "Atención: ${snapshot.criticalDeficits.first()}",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
  * Tarjeta interactiva del Mensajero Diario con IA:
  * Entrega un consejo tierno, personalizado para el día de hoy, mencionando el hito gestacional
  * de hoy y el avance de los preparativos en la base de datos.
@@ -210,68 +388,105 @@ fun DailyAiWisdomCard(
     wisdom: DailyAiWisdom,
     onRefresh: () -> Unit
 ) {
+    var isExpanded by remember { mutableStateOf(false) }
+
     val bgBrush = Brush.linearGradient(
         colors = listOf(
-            Color(0xFFF3E5F5), // Lavanda pastel
-            Color(0xFFE1F5FE), // Azul cielo suave
-            Color(0xFFFFF8E1)  // Crema sol cálido
+            Color(0xFFF3E5F5).copy(alpha = 0.5f),
+            Color(0xFFE1F5FE).copy(alpha = 0.5f),
+            Color(0xFFFFF8E1).copy(alpha = 0.5f)
         )
     )
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, Color(0xFFCE93D8).copy(alpha = 0.45f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Box(modifier = Modifier.background(bgBrush).padding(16.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(
+            modifier = Modifier
+                .background(bgBrush)
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.clickable { isExpanded = !isExpanded }
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("✨", fontSize = 20.sp)
-                        Text(
-                            text = "Mensajero Diario con IA",
-                            fontWeight = FontWeight.ExtraBold,
-                            fontSize = 15.sp,
-                            color = Color(0xFF4A148C)
-                        )
-                    }
+                    Text("✨", fontSize = 18.sp)
+                    Text(
+                        text = "Mensajero Diario con IA",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = Color(0xFF4A148C)
+                    )
+                }
 
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (wisdom.isLoading) {
-                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color(0xFF4A148C))
-                        } else {
-                            Surface(
-                                shape = CircleShape,
-                                color = Color.White.copy(alpha = 0.7f),
-                                onClick = onRefresh,
-                                modifier = Modifier.size(28.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text("🔄", fontSize = 12.sp)
-                                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    if (wisdom.isLoading) {
+                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = Color(0xFF4A148C))
+                    } else {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color.White.copy(alpha = 0.8f),
+                            onClick = onRefresh,
+                            modifier = Modifier.size(26.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("🔄", fontSize = 11.sp)
                             }
                         }
                     }
                 }
+            }
 
-                Surface(
-                    shape = RoundedCornerShape(14.dp),
-                    color = Color.White.copy(alpha = 0.75f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    FormattedMarkdownText(
-                        text = wisdom.message,
-                        modifier = Modifier.padding(14.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        lineHeight = 21.sp,
-                        color = Color(0xFF263238)
-                    )
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color.White.copy(alpha = 0.85f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { isExpanded = !isExpanded }
+            ) {
+                Column(modifier = Modifier.padding(10.dp)) {
+                    if (!isExpanded) {
+                        Text(
+                            text = wisdom.message.lines().firstOrNull { it.isNotBlank() } ?: wisdom.message,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = Color(0xFF263238),
+                            lineHeight = 18.sp
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Leer mensaje completo ✨ ▾",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF6A1B9A)
+                        )
+                    } else {
+                        FormattedMarkdownText(
+                            text = wisdom.message,
+                            style = MaterialTheme.typography.bodyMedium,
+                            lineHeight = 20.sp,
+                            color = Color(0xFF263238)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Ocultar ▴",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF6A1B9A)
+                        )
+                    }
                 }
             }
         }

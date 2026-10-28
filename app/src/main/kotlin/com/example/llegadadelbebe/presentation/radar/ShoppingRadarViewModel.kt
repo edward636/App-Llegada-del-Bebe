@@ -280,6 +280,7 @@ class ShoppingRadarViewModel(
     }
 
     fun deletePriceQuote(id: String) {
+        localPreferences.recordDeletedQuoteId(id)
         val updated = _quotes.value.filterNot { it.id == id }
         _quotes.value = updated
         localPreferences.saveRadarQuotesCache(updated)
@@ -532,13 +533,14 @@ class ShoppingRadarViewModel(
     fun syncQuotesWithCloud(sheetUrl: String = com.example.llegadadelbebe.core.security.SecureConfig.getGoogleSheetUrl()) {
         if (sheetUrl.isBlank()) return
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val deletedQuoteIds = localPreferences.getDeletedQuoteIds()
             val remoteResult = googleSheetsService.fetchSystemRecord(sheetUrl, com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_RADAR_QUOTES)
             if (remoteResult.isSuccess) {
                 val remotePayload = remoteResult.getOrNull()
                 if (!remotePayload.isNullOrBlank()) {
-                    val remoteQuotes = localPreferences.parseQuotesJson(remotePayload)
+                    val remoteQuotes = localPreferences.parseQuotesJson(remotePayload).filterNot { it.id in deletedQuoteIds }
                     if (remoteQuotes.isNotEmpty()) {
-                        val currentMap = _quotes.value.associateBy { it.id }.toMutableMap()
+                        val currentMap = _quotes.value.filterNot { it.id in deletedQuoteIds }.associateBy { it.id }.toMutableMap()
                         for (rq in remoteQuotes) {
                             if (!currentMap.containsKey(rq.id)) {
                                 currentMap[rq.id] = rq
@@ -551,8 +553,9 @@ class ShoppingRadarViewModel(
                 }
             }
 
-            // Subir cotizaciones unificadas a la nube
-            val jsonPayload = localPreferences.quotesToJson(_quotes.value)
+            // Subir cotizaciones unificadas a la nube (excluyendo eliminadas)
+            val activeQuotes = _quotes.value.filterNot { it.id in deletedQuoteIds }
+            val jsonPayload = localPreferences.quotesToJson(activeQuotes)
             googleSheetsService.saveSystemRecord(
                 webAppUrl = sheetUrl,
                 systemId = com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_RADAR_QUOTES,

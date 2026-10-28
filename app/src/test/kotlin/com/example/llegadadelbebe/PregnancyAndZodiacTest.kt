@@ -27,7 +27,10 @@ class PregnancyAndZodiacTest {
         assertEquals(0, stats.currentDays)
         assertEquals(3, stats.trimester) // 3er trimestre
         assertEquals(12L, stats.weeksRemaining) // 40 - 28 = 12 semanas
-        assertTrue(stats.babySizeComparison.contains("Berenjena"))
+        assertTrue(stats.babySizeComparison.contains("Coco de playa"))
+        assertEquals(28, stats.growthMilestone.week)
+        assertEquals("Coco de playa falconiano", stats.growthMilestone.fruitName)
+        assertEquals("Osezno Frontino andino", stats.growthMilestone.animalName)
     }
 
     @Test

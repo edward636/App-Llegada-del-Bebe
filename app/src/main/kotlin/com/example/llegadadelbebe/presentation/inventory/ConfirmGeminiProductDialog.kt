@@ -297,7 +297,7 @@ fun ConfirmGeminiProductDialog(
                         shape = RoundedCornerShape(10.dp),
                         contentPadding = ButtonDefaults.TextButtonContentPadding
                     ) {
-                        Text(if (showSearchCandidates) "Cerrar" else "🔍 Buscar otra", fontSize = 11.sp)
+                        Text(if (showSearchCandidates) "✕ Ocultar" else "🔍 Buscar otra", fontSize = 11.sp)
                     }
                 }
 

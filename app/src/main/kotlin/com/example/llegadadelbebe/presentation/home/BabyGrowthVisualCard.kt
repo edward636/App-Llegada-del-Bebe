@@ -106,19 +106,25 @@ fun BabyGrowthVisualCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f, fill = false)) {
                     Text(
                         text = "🌱 Tamaño del Bebé (Semana $currentWeeks)",
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.primary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = categoryLabel,
+                        text = "$categoryLabel (Venezuela 🇻🇪)",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
 
                 // Selector de modo pill
                 Surface(
@@ -133,7 +139,7 @@ fun BabyGrowthVisualCard(
                             onClick = { selectedMode = 0 }
                         )
                         PillOption(
-                            text = "🐾 Animal",
+                            text = "🐾 Fauna",
                             isSelected = selectedMode == 1,
                             onClick = { selectedMode = 1 }
                         )
@@ -184,11 +190,12 @@ fun BabyGrowthVisualCard(
                     ) {
                         Text(
                             text = currentModeName,
-                            fontSize = 18.sp,
+                            fontSize = 17.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                            lineHeight = 21.sp
                         )
 
                         Row(
@@ -296,13 +303,20 @@ fun BabyGrowthVisualCard(
                             color = MaterialTheme.colorScheme.primary
                         )
                         Text(
-                            text = "Guía semana a semana de Frutas y Animales compañeros",
+                            text = "Guía semana a semana con Frutas Criollas y Fauna de Venezuela 🇻🇪",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    IconButton(onClick = { showAllWeeksSheet = false }) {
-                        Text("✕", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                    Surface(
+                        shape = CircleShape,
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        onClick = { showAllWeeksSheet = false },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("✕", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
                     }
                 }
 

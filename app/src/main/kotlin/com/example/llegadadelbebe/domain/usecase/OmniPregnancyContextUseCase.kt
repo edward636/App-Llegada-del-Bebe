@@ -134,13 +134,13 @@ class OmniPregnancyContextUseCase(
 
     fun buildAiPrompt(snapshot: OmniDashboardSnapshot, babyName: String): String {
         return """
-            Actúa como un Obstetra y Consultor de Cuidado Perinatal de cabecera para los padres Edward y Britney.
+            Actúa como un Obstetra y Consultor de Cuidado Perinatal de cabecera potenciado por Gemini 3.8 Flash para los padres Edward y Britney en Venezuela.
             Bebé en camino: $babyName.
             
             ESTADO INTEGRAL 360° DE LA FAMILIA:
             - Semana Gestacional: ${snapshot.pregnancyStats.currentWeeks} semanas + ${snapshot.pregnancyStats.currentDays} días.
             - Faltan: ${snapshot.pregnancyStats.daysRemaining} días para la Fecha Probable de Parto (${snapshot.pregnancyStats.estimatedDueDate}).
-            - Fruta/Animal de referencia: ${snapshot.pregnancyStats.growthMilestone.fruitName} (${snapshot.pregnancyStats.growthMilestone.lengthCm} cm, ${snapshot.pregnancyStats.growthMilestone.weightGrams} g) / ${snapshot.pregnancyStats.growthMilestone.animalName}.
+            - Fruta Criolla y Fauna Venezolana de referencia: ${snapshot.pregnancyStats.growthMilestone.fruitName} (${snapshot.pregnancyStats.growthMilestone.lengthCm} cm, ${snapshot.pregnancyStats.growthMilestone.weightGrams} g) / ${snapshot.pregnancyStats.growthMilestone.animalName}.
             - Índice de Preparación General: ${snapshot.readinessScorePercent}% sobre 100%.
               * Preparación de Inventario: ${snapshot.inventoryScorePercent}%
               * Maleta Clínica: ${snapshot.hospitalBagCheckedCount}/${snapshot.hospitalBagTotalCount} ítems listos (${snapshot.hospitalBagScorePercent}%)
@@ -151,11 +151,11 @@ class OmniPregnancyContextUseCase(
 
             INSTRUCCIONES DE RESPUESTA:
             Genera un informe ejecutivo cálido, motivador y sumamente estructurado con:
-            1. 🩺 **Diagnóstico Clínico del Momento:** Qué está viviendo el bebé esta semana y cómo cuidar a Britney hoy.
-            2. 🎯 **Las 3 Prioridades Inmediatas:** Qué debe comprar o preparar Edward primero sin gastar de más.
+            1. 🩺 **Diagnóstico Clínico del Momento:** Qué está viviendo el bebé esta semana en la pancita y cómo consentir a Britney hoy.
+            2. 🎯 **Las 3 Prioridades Inmediatas:** Qué debe comprar o preparar Edward primero sin gastar de más en comercios de Venezuela.
             3. 🎒 **Consejo de Maleta y Clínica:** Alerta si la maleta debe estar ya en el carro según las semanas actuales.
-            4. 💌 **Mensaje de Aliento Familiar:** Para Edward y Britney.
-            (Sé conciso, empático, directo y utiliza viñetas legibles).
+            4. 💌 **Mensaje de Aliento Familiar:** Para Edward y Britney con amor.
+            (Sé conciso, empático, directo y utiliza viñetas legibles generadas con Gemini 3.8 Flash).
         """.trimIndent()
     }
 }

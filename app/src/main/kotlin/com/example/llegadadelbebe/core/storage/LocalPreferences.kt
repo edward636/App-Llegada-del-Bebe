@@ -481,10 +481,38 @@ class LocalPreferences(context: Context) {
         } catch (_: Exception) {}
     }
 
+    fun getDeletedMedicationIds(): Set<String> {
+        return prefs.getStringSet(KEY_DELETED_MEDICATION_IDS, emptySet()) ?: emptySet()
+    }
+
+    fun recordDeletedMedicationId(id: String) {
+        val current = getDeletedMedicationIds().toMutableSet()
+        current.add(id)
+        prefs.edit().putStringSet(KEY_DELETED_MEDICATION_IDS, current).apply()
+    }
+
+    fun getDeletedQuoteIds(): Set<String> {
+        return prefs.getStringSet(KEY_DELETED_QUOTE_IDS, emptySet()) ?: emptySet()
+    }
+
+    fun recordDeletedQuoteId(id: String) {
+        val current = getDeletedQuoteIds().toMutableSet()
+        current.add(id)
+        prefs.edit().putStringSet(KEY_DELETED_QUOTE_IDS, current).apply()
+    }
+
     fun getMedicationsCache(): List<com.example.llegadadelbebe.domain.model.PrenatalMedication> {
-        val raw = prefs.getString(KEY_MEDICATIONS_CACHE, null) ?: return getDefaultPrenatalMedications()
+        val isInitialized = prefs.getBoolean(KEY_MEDICATIONS_INITIALIZED, false)
+        val raw = prefs.getString(KEY_MEDICATIONS_CACHE, null)
+        if (!isInitialized || raw == null) {
+            val defaults = getDefaultPrenatalMedications()
+            saveMedicationsCache(defaults)
+            prefs.edit().putBoolean(KEY_MEDICATIONS_INITIALIZED, true).apply()
+            return defaults
+        }
+        val deletedIds = getDeletedMedicationIds()
         val parsed = parseMedicationsJson(raw)
-        return if (parsed.isEmpty()) getDefaultPrenatalMedications() else parsed
+        return parsed.filterNot { it.id in deletedIds }
     }
 
     private fun getDefaultPrenatalMedications(): List<com.example.llegadadelbebe.domain.model.PrenatalMedication> {
@@ -585,6 +613,9 @@ class LocalPreferences(context: Context) {
         private const val KEY_DAILY_AI_DATE = "daily_ai_date"
         private const val KEY_DAILY_AI_MESSAGE = "daily_ai_message"
         private const val KEY_MEDICATIONS_CACHE = "medications_cache_json"
+        private const val KEY_MEDICATIONS_INITIALIZED = "medications_initialized_v2"
+        private const val KEY_DELETED_MEDICATION_IDS = "deleted_medication_ids_v2"
+        private const val KEY_DELETED_QUOTE_IDS = "deleted_quote_ids_v2"
         private const val KEY_LAST_APP_OPEN_MILLIS = "last_app_open_millis"
         private const val KEY_LAST_ENGAGEMENT_NOTIF_EPOCH_DAY = "last_engagement_notif_epoch_day"
         private const val KEY_DELETED_PRODUCT_IDS = "deleted_product_ids"

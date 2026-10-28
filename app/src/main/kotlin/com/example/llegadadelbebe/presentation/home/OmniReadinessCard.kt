@@ -215,8 +215,15 @@ fun OmniReadinessCard(
                             fontSize = 17.sp,
                             color = MaterialTheme.colorScheme.primary
                         )
-                        TextButton(onClick = { showReportDialog = false }) {
-                            Text("Cerrar")
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.surfaceVariant,
+                            onClick = { showReportDialog = false },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("✕", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
                         }
                     }
 
@@ -235,7 +242,7 @@ fun OmniReadinessCard(
                             ) {
                                 CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                                 Text(
-                                    text = "Consultando a Gemini 2.5 Flash...",
+                                    text = "Consultando a Gemini 3.8 Flash...",
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )

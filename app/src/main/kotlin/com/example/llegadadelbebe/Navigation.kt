@@ -5,6 +5,15 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBar
+import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -14,12 +23,17 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
@@ -167,88 +181,124 @@ fun MainNavigation(
         PrenatalMedicationsViewModel(context.applicationContext as android.app.Application)
     }
 
-    NavDisplay(
-        backStack = backStack,
-        onBack = { backStack.removeLastOrNull() },
-        entryProvider = entryProvider {
-            entry<NavHome> {
-                HomeScreen(
-                    viewModel = homeViewModel,
-                    geminiApiKey = geminiApiKeyState,
-                    activeUser = activeUserState,
-                    onNavigateToInventory = { backStack.add(NavInventory) },
-                    onNavigateToConsumables = { backStack.add(NavConsumables) },
-                    onNavigateToSynastry = { backStack.add(NavFamilySynastry) },
-                    onNavigateToRadar = { backStack.add(NavShoppingRadar) },
-                    onNavigateToMedications = { backStack.add(NavMedications) },
-                    onNavigateToSettings = { backStack.add(NavSettings) }
-                )
+    fun navigateToTab(destination: NavKey) {
+        if (backStack.lastOrNull() == destination) return
+        if (destination is NavHome) {
+            while (backStack.size > 1) {
+                backStack.removeLastOrNull()
             }
-            entry<NavInventory> {
-                InventoryScreen(
-                    viewModel = inventoryViewModel,
-                    googleSheetUrl = googleSheetUrlState,
-                    geminiApiKey = geminiApiKeyState,
-                    onUserChanged = { newUser ->
-                        activeUserState = newUser
-                        localPreferences.saveActiveUser(newUser)
-                    },
-                    onBack = { backStack.removeLastOrNull() }
-                )
+        } else {
+            val current = backStack.lastOrNull()
+            val isTopLevel = current is NavInventory || current is NavConsumables || current is NavMedications || current is NavShoppingRadar
+            if (isTopLevel) {
+                backStack.removeLastOrNull()
             }
-            entry<NavConsumables> {
-                ConsumablesAuditScreen(
-                    viewModel = consumablesViewModel,
-                    apiKey = geminiApiKeyState,
-                    onBack = { backStack.removeLastOrNull() }
-                )
-            }
-            entry<NavFamilySynastry> {
-                FamilySynastryScreen(
-                    viewModel = synastryViewModel,
-                    apiKey = geminiApiKeyState,
-                    onBack = { backStack.removeLastOrNull() }
-                )
-            }
-            entry<NavShoppingRadar> {
-                ShoppingRadarScreen(
-                    viewModel = radarViewModel,
-                    geminiApiKey = geminiApiKeyState,
-                    onBack = { backStack.removeLastOrNull() }
-                )
-            }
-            entry<NavMedications> {
-                PrenatalMedicationsScreen(
-                    viewModel = medicationsViewModel,
-                    geminiApiKey = geminiApiKeyState,
-                    onBack = { backStack.removeLastOrNull() }
-                )
-            }
-            entry<NavSettings> {
-                SettingsScreen(
-                    babyName = babyNameState,
-                    currentLmp = lmpDateState,
-                    currentUser = activeUserState,
-                    currentThemeMode = currentThemeMode,
-                    onThemeModeChanged = onThemeModeChanged,
-                    onSaveBabySettings = { newName, newLmp, newUser ->
-                        babyNameState = newName
-                        lmpDateState = newLmp
-                        activeUserState = newUser
-                        localPreferences.saveBabyName(newName)
-                        localPreferences.saveLmpDate(newLmp)
-                        localPreferences.saveActiveUser(newUser)
-                        homeViewModel.updateBabySettings(newName, newLmp)
-                        inventoryViewModel.setActiveUser(newUser)
-                        radarViewModel.setActiveUser(newUser)
-                        medicationsViewModel.setActiveUser(newUser)
-                        synastryViewModel.refreshCalculations()
-                    },
-                    onBack = { backStack.removeLastOrNull() }
+            backStack.add(destination)
+        }
+    }
+
+    val currentKey = backStack.lastOrNull()
+    val showBottomBar = currentKey !is NavSettings
+
+    Scaffold(
+        bottomBar = {
+            if (showBottomBar) {
+                BabyBottomNavigationBar(
+                    currentKey = currentKey,
+                    onNavigateToTab = { key -> navigateToTab(key) }
                 )
             }
         }
-    )
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = innerPadding.calculateBottomPadding())
+        ) {
+            NavDisplay(
+                backStack = backStack,
+                onBack = { backStack.removeLastOrNull() },
+                entryProvider = entryProvider {
+                    entry<NavHome> {
+                        HomeScreen(
+                            viewModel = homeViewModel,
+                            geminiApiKey = geminiApiKeyState,
+                            activeUser = activeUserState,
+                            onNavigateToInventory = { navigateToTab(NavInventory) },
+                            onNavigateToConsumables = { navigateToTab(NavConsumables) },
+                            onNavigateToSynastry = { backStack.add(NavFamilySynastry) },
+                            onNavigateToRadar = { navigateToTab(NavShoppingRadar) },
+                            onNavigateToMedications = { navigateToTab(NavMedications) },
+                            onNavigateToSettings = { backStack.add(NavSettings) }
+                        )
+                    }
+                    entry<NavInventory> {
+                        InventoryScreen(
+                            viewModel = inventoryViewModel,
+                            googleSheetUrl = googleSheetUrlState,
+                            geminiApiKey = geminiApiKeyState,
+                            onUserChanged = { newUser ->
+                                activeUserState = newUser
+                                localPreferences.saveActiveUser(newUser)
+                            },
+                            onBack = { backStack.removeLastOrNull() }
+                        )
+                    }
+                    entry<NavConsumables> {
+                        ConsumablesAuditScreen(
+                            viewModel = consumablesViewModel,
+                            apiKey = geminiApiKeyState,
+                            onBack = { backStack.removeLastOrNull() }
+                        )
+                    }
+                    entry<NavFamilySynastry> {
+                        FamilySynastryScreen(
+                            viewModel = synastryViewModel,
+                            apiKey = geminiApiKeyState,
+                            onBack = { backStack.removeLastOrNull() }
+                        )
+                    }
+                    entry<NavShoppingRadar> {
+                        ShoppingRadarScreen(
+                            viewModel = radarViewModel,
+                            geminiApiKey = geminiApiKeyState,
+                            onBack = { backStack.removeLastOrNull() }
+                        )
+                    }
+                    entry<NavMedications> {
+                        PrenatalMedicationsScreen(
+                            viewModel = medicationsViewModel,
+                            geminiApiKey = geminiApiKeyState,
+                            onBack = { backStack.removeLastOrNull() }
+                        )
+                    }
+                    entry<NavSettings> {
+                        SettingsScreen(
+                            babyName = babyNameState,
+                            currentLmp = lmpDateState,
+                            currentUser = activeUserState,
+                            currentThemeMode = currentThemeMode,
+                            onThemeModeChanged = onThemeModeChanged,
+                            onSaveBabySettings = { newName, newLmp, newUser ->
+                                babyNameState = newName
+                                lmpDateState = newLmp
+                                activeUserState = newUser
+                                localPreferences.saveBabyName(newName)
+                                localPreferences.saveLmpDate(newLmp)
+                                localPreferences.saveActiveUser(newUser)
+                                homeViewModel.updateBabySettings(newName, newLmp)
+                                inventoryViewModel.setActiveUser(newUser)
+                                radarViewModel.setActiveUser(newUser)
+                                medicationsViewModel.setActiveUser(newUser)
+                                synastryViewModel.refreshCalculations()
+                            },
+                            onBack = { backStack.removeLastOrNull() }
+                        )
+                    }
+                }
+            )
+        }
+    }
 
     // Diálogo de actualización OTA cuando se detecta una nueva versión
     pendingUpdate?.let { update ->
@@ -297,5 +347,52 @@ fun MainNavigation(
                 }
             }
         )
+    }
+}
+
+@Composable
+fun BabyBottomNavigationBar(
+    currentKey: Any?,
+    onNavigateToTab: (NavKey) -> Unit
+) {
+    NavigationBar(
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 6.dp
+    ) {
+        val items = listOf(
+            Triple(NavHome, "🏠", "Inicio"),
+            Triple(NavInventory, "📦", "Inventario"),
+            Triple(NavConsumables, "🎒", "Maleta"),
+            Triple(NavMedications, "💊", "Vitaminas"),
+            Triple(NavShoppingRadar, "🛒", "Radar")
+        )
+
+        items.forEach { (key, icon, label) ->
+            val isSelected = currentKey == key
+            NavigationBarItem(
+                selected = isSelected,
+                onClick = { onNavigateToTab(key) },
+                icon = {
+                    Text(
+                        text = icon,
+                        fontSize = if (isSelected) 22.sp else 19.sp
+                    )
+                },
+                label = {
+                    Text(
+                        text = label,
+                        fontSize = 11.sp,
+                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                    )
+                },
+                colors = NavigationBarItemDefaults.colors(
+                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            )
+        }
     }
 }
