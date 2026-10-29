@@ -151,6 +151,10 @@ class LocalPreferences(context: Context) {
         return prefs.getStringSet(KEY_HOSPITAL_BAG_CHECKED, emptySet()) ?: emptySet()
     }
 
+    fun saveHospitalBagCheckedIds(ids: Set<String>) {
+        prefs.edit().putStringSet(KEY_HOSPITAL_BAG_CHECKED, ids).apply()
+    }
+
     fun toggleHospitalBagItemChecked(itemId: String): Set<String> {
         val current = getHospitalBagCheckedIds().toMutableSet()
         if (current.contains(itemId)) {

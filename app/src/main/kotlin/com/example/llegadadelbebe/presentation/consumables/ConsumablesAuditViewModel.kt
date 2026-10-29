@@ -23,6 +23,50 @@ class ConsumablesAuditViewModel(
     private val localPreferences: com.example.llegadadelbebe.core.storage.LocalPreferences? = null
 ) : ViewModel() {
 
+    private val googleSheetsService = com.example.llegadadelbebe.data.remote.GoogleSheetsService()
+
+    private val _checkedBagIds = MutableStateFlow<Set<String>>(localPreferences?.getHospitalBagCheckedIds() ?: emptySet())
+    val checkedBagIds: StateFlow<Set<String>> = _checkedBagIds.asStateFlow()
+
+    init {
+        syncHospitalBagWithCloud()
+    }
+
+    fun toggleBagItem(itemId: String, sheetUrl: String = com.example.llegadadelbebe.core.security.SecureConfig.getGoogleSheetUrl()): Set<String> {
+        val updated = localPreferences?.toggleHospitalBagItemChecked(itemId) ?: emptySet()
+        _checkedBagIds.value = updated
+        syncHospitalBagWithCloud(sheetUrl)
+        return updated
+    }
+
+    fun syncHospitalBagWithCloud(sheetUrl: String = com.example.llegadadelbebe.core.security.SecureConfig.getGoogleSheetUrl()) {
+        if (sheetUrl.isBlank()) return
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val remoteResult = googleSheetsService.fetchSystemRecord(sheetUrl, com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_HOSPITAL_BAG)
+            if (remoteResult.isSuccess) {
+                val remotePayload = remoteResult.getOrNull()
+                if (!remotePayload.isNullOrBlank()) {
+                    val array = org.json.JSONArray(remotePayload)
+                    val remoteSet = mutableSetOf<String>()
+                    for (i in 0 until array.length()) remoteSet.add(array.getString(i))
+                    val localSet = localPreferences?.getHospitalBagCheckedIds() ?: emptySet()
+                    val merged = localSet + remoteSet
+                    localPreferences?.saveHospitalBagCheckedIds(merged)
+                    _checkedBagIds.value = merged
+                }
+            }
+            val current = localPreferences?.getHospitalBagCheckedIds() ?: emptySet()
+            val array = org.json.JSONArray()
+            current.forEach { array.put(it) }
+            googleSheetsService.saveSystemRecord(
+                webAppUrl = sheetUrl,
+                systemId = com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_HOSPITAL_BAG,
+                name = "Maleta Clínica Empacada",
+                jsonPayload = array.toString()
+            )
+        }
+    }
+
     private val _geminiAdvice = MutableStateFlow("")
     val geminiAdvice: StateFlow<String> = _geminiAdvice.asStateFlow()
 

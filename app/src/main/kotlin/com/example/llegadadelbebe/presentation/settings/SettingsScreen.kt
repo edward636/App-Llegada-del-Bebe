@@ -219,16 +219,16 @@ fun SettingsScreen(
                 }
             }
 
-            // 2. Cálculo Preciso por Fecha de Última Regla (FUR / FUM)
+            // 2. Identidad del Bebé y Estado Obstétrico Oficial
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
             ) {
-                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(modifier = Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
                     Text(
-                        text = "📅 Cálculo por Fecha de Última Regla (FUR)",
+                        text = "👶 Identidad del Bebé",
                         fontWeight = FontWeight.Bold,
                         fontSize = 17.sp,
                         color = MaterialTheme.colorScheme.primary
@@ -243,120 +243,44 @@ fun SettingsScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    Text(
-                        text = "Fecha de inicio de la última menstruación (FUM / FUR):",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.Medium
-                    )
-
-                    // Control Ergonómico de la FUR (Día, Mes, Año)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Día
-                        Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(text = "Día", style = MaterialTheme.typography.labelSmall)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Button(
-                                    onClick = { if (lmpDate.dayOfMonth > 1) lmpDate = lmpDate.minusDays(1) },
-                                    modifier = Modifier.size(36.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                                ) { Text("-", fontSize = 16.sp) }
-
-                                Text(
-                                    text = String.format("%02d", lmpDate.dayOfMonth),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 18.sp,
-                                    modifier = Modifier.padding(horizontal = 6.dp)
-                                )
-
-                                Button(
-                                    onClick = { if (lmpDate.dayOfMonth < lmpDate.lengthOfMonth()) lmpDate = lmpDate.plusDays(1) },
-                                    modifier = Modifier.size(36.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                                ) { Text("+", fontSize = 16.sp) }
-                            }
-                        }
-
-                        // Mes
-                        Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(text = "Mes", style = MaterialTheme.typography.labelSmall)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Button(
-                                    onClick = { lmpDate = lmpDate.minusMonths(1) },
-                                    modifier = Modifier.size(36.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                                ) { Text("-", fontSize = 16.sp) }
-
-                                Text(
-                                    text = String.format("%02d", lmpDate.monthValue),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 18.sp,
-                                    modifier = Modifier.padding(horizontal = 6.dp)
-                                )
-
-                                Button(
-                                    onClick = { lmpDate = lmpDate.plusMonths(1) },
-                                    modifier = Modifier.size(36.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                                ) { Text("+", fontSize = 16.sp) }
-                            }
-                        }
-
-                        // Año
-                        Column(modifier = Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(text = "Año", style = MaterialTheme.typography.labelSmall)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Button(
-                                    onClick = { lmpDate = lmpDate.minusYears(1) },
-                                    modifier = Modifier.size(36.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                                ) { Text("-", fontSize = 16.sp) }
-
-                                Text(
-                                    text = lmpDate.year.toString(),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
-                                    modifier = Modifier.padding(horizontal = 4.dp)
-                                )
-
-                                Button(
-                                    onClick = { lmpDate = lmpDate.plusYears(1) },
-                                    modifier = Modifier.size(36.dp),
-                                    shape = RoundedCornerShape(8.dp),
-                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-                                ) { Text("+", fontSize = 16.sp) }
-                            }
-                        }
-                    }
-
-                    // Tarjeta de Resultado Clínico de Naegele
+                    // Tarjeta de Control Clínico Obstétrico Inmutable (FUR Oficial 05/06/2026)
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(14.dp),
                         color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
                     ) {
-                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "🩺 Control Clínico Obstétrico Oficial",
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = "🔒 Fija",
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontSize = 12.sp
+                                )
+                            }
                             Text(
-                                text = "✨ Resultado Clínico Obstétrico:",
+                                text = "• Fecha de Última Regla (FUR): ${calculatedStats.lmpDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}",
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
                                 fontSize = 14.sp
                             )
                             Text(
-                                text = "• Edad gestacional: Semana ${calculatedStats.currentWeeks} + ${calculatedStats.currentDays} días",
+                                text = "• Edad gestacional: Semana ${calculatedStats.currentWeeks} + ${calculatedStats.currentDays} días (${if (calculatedStats.trimester == 1) "1er" else if (calculatedStats.trimester == 2) "2do" else "3er"} Trimestre)",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 15.sp
+                                fontSize = 15.sp,
+                                color = MaterialTheme.colorScheme.primary
                             )
                             Text(
-                                text = "• Fecha Probable de Parto (FPP): ${calculatedStats.estimatedDueDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}",
+                                text = "• Fecha Probable de Parto (FPP Naegele): ${calculatedStats.estimatedDueDate.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))}",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                             Text(
@@ -364,9 +288,16 @@ fun SettingsScreen(
                                 style = MaterialTheme.typography.bodySmall
                             )
                             Text(
-                                text = "• Faltan: ${calculatedStats.daysRemaining} días (~${calculatedStats.weeksRemaining} semanas)",
+                                text = "• Cuenta regresiva: Faltan ${calculatedStats.daysRemaining} días (~${calculatedStats.weeksRemaining} semanas)",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "ℹ️ La FUR está anclada permanentemente al 05/06/2026 para garantizar que Gemini 3.8 Flash, la Sabiduría Diaria y el crecimiento del bebé operen con máxima fidelidad médica.",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                                lineHeight = 16.sp,
+                                modifier = Modifier.padding(top = 4.dp)
                             )
                         }
                     }

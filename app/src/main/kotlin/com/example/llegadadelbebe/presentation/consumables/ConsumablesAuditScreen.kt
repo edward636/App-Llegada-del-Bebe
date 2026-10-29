@@ -72,14 +72,11 @@ fun ConsumablesAuditScreen(
 ) {
     val context = LocalContext.current
     val localPreferences = remember { LocalPreferences(context) }
-    var checkedHospitalBagItemIds by remember {
-        mutableStateOf(localPreferences.getHospitalBagCheckedIds())
-    }
-
     val summary by viewModel.auditSummary.collectAsStateWithLifecycle()
     val products by viewModel.products.collectAsStateWithLifecycle()
     val advice by viewModel.geminiAdvice.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoadingAdvice.collectAsStateWithLifecycle()
+    val checkedHospitalBagItemIds by viewModel.checkedBagIds.collectAsStateWithLifecycle()
 
     // 0 = Llegada del Bebé (Casa), 1 = Bolsito del Parto (Maleta Clínica), 2 = Después del Nacimiento
     var selectedSection by remember { mutableIntStateOf(0) }
@@ -195,8 +192,7 @@ fun ConsumablesAuditScreen(
                         sections = summary.hospitalBagSections,
                         checkedItemIds = checkedHospitalBagItemIds,
                         onToggleItem = { itemId ->
-                            val updated = localPreferences.toggleHospitalBagItemChecked(itemId)
-                            checkedHospitalBagItemIds = updated
+                            viewModel.toggleBagItem(itemId)
                         }
                     )
                 }
