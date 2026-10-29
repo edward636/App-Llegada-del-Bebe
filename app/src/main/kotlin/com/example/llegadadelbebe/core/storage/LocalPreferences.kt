@@ -155,6 +155,14 @@ class LocalPreferences(context: Context) {
         prefs.edit().putStringSet(KEY_HOSPITAL_BAG_CHECKED, ids).apply()
     }
 
+    fun getHospitalBagUpdatedAt(): Long {
+        return prefs.getLong(KEY_HOSPITAL_BAG_UPDATED_AT, 0L)
+    }
+
+    fun saveHospitalBagUpdatedAt(timestamp: Long) {
+        prefs.edit().putLong(KEY_HOSPITAL_BAG_UPDATED_AT, timestamp).apply()
+    }
+
     fun toggleHospitalBagItemChecked(itemId: String): Set<String> {
         val current = getHospitalBagCheckedIds().toMutableSet()
         if (current.contains(itemId)) {
@@ -162,7 +170,11 @@ class LocalPreferences(context: Context) {
         } else {
             current.add(itemId)
         }
-        prefs.edit().putStringSet(KEY_HOSPITAL_BAG_CHECKED, current).apply()
+        val now = System.currentTimeMillis()
+        prefs.edit()
+            .putStringSet(KEY_HOSPITAL_BAG_CHECKED, current)
+            .putLong(KEY_HOSPITAL_BAG_UPDATED_AT, now)
+            .apply()
         return current
     }
 
@@ -597,6 +609,67 @@ class LocalPreferences(context: Context) {
         prefs.edit().remove(KEY_DELETED_PRODUCT_IDS).apply()
     }
 
+    // --- Sincronización Segura Two-Phone (Prevención de Resurrección de Borrados) ---
+    fun getPendingUploadProductIds(): Set<String> {
+        return prefs.getStringSet(KEY_PENDING_UPLOAD_PRODUCT_IDS, emptySet()) ?: emptySet()
+    }
+
+    fun addPendingUploadProductId(id: String) {
+        val current = getPendingUploadProductIds().toMutableSet()
+        current.add(id)
+        prefs.edit().putStringSet(KEY_PENDING_UPLOAD_PRODUCT_IDS, current).apply()
+    }
+
+    fun removePendingUploadProductId(id: String) {
+        val current = getPendingUploadProductIds().toMutableSet()
+        current.remove(id)
+        prefs.edit().putStringSet(KEY_PENDING_UPLOAD_PRODUCT_IDS, current).apply()
+    }
+
+    fun clearPendingUploadProductIds() {
+        prefs.edit().remove(KEY_PENDING_UPLOAD_PRODUCT_IDS).apply()
+    }
+
+    fun getPendingUploadMedicationIds(): Set<String> {
+        return prefs.getStringSet(KEY_PENDING_UPLOAD_MED_IDS, emptySet()) ?: emptySet()
+    }
+
+    fun addPendingUploadMedicationId(id: String) {
+        val current = getPendingUploadMedicationIds().toMutableSet()
+        current.add(id)
+        prefs.edit().putStringSet(KEY_PENDING_UPLOAD_MED_IDS, current).apply()
+    }
+
+    fun removePendingUploadMedicationId(id: String) {
+        val current = getPendingUploadMedicationIds().toMutableSet()
+        current.remove(id)
+        prefs.edit().putStringSet(KEY_PENDING_UPLOAD_MED_IDS, current).apply()
+    }
+
+    fun clearPendingUploadMedicationIds() {
+        prefs.edit().remove(KEY_PENDING_UPLOAD_MED_IDS).apply()
+    }
+
+    fun getPendingUploadQuoteIds(): Set<String> {
+        return prefs.getStringSet(KEY_PENDING_UPLOAD_QUOTE_IDS, emptySet()) ?: emptySet()
+    }
+
+    fun addPendingUploadQuoteId(id: String) {
+        val current = getPendingUploadQuoteIds().toMutableSet()
+        current.add(id)
+        prefs.edit().putStringSet(KEY_PENDING_UPLOAD_QUOTE_IDS, current).apply()
+    }
+
+    fun removePendingUploadQuoteId(id: String) {
+        val current = getPendingUploadQuoteIds().toMutableSet()
+        current.remove(id)
+        prefs.edit().putStringSet(KEY_PENDING_UPLOAD_QUOTE_IDS, current).apply()
+    }
+
+    fun clearPendingUploadQuoteIds() {
+        prefs.edit().remove(KEY_PENDING_UPLOAD_QUOTE_IDS).apply()
+    }
+
     fun getThemeMode(): String {
         return prefs.getString(KEY_THEME_MODE, com.example.llegadadelbebe.ui.theme.ThemeModes.SYSTEM)
             ?: com.example.llegadadelbebe.ui.theme.ThemeModes.SYSTEM
@@ -615,6 +688,7 @@ class LocalPreferences(context: Context) {
         private const val KEY_ACTIVE_USER = "active_user"
         private const val KEY_INVENTORY_CACHE = "inventory_cache_json"
         private const val KEY_HOSPITAL_BAG_CHECKED = "hospital_bag_checked_ids"
+        private const val KEY_HOSPITAL_BAG_UPDATED_AT = "hospital_bag_updated_at"
         private const val KEY_FATHER_BIRTH_EPOCH = "father_birth_epoch"
         private const val KEY_FATHER_BIRTH_MINUTES = "father_birth_minutes"
         private const val KEY_MOTHER_BIRTH_EPOCH = "mother_birth_epoch"
@@ -629,6 +703,9 @@ class LocalPreferences(context: Context) {
         private const val KEY_MEDICATIONS_INITIALIZED = "medications_initialized_v2"
         private const val KEY_DELETED_MEDICATION_IDS = "deleted_medication_ids_v2"
         private const val KEY_DELETED_QUOTE_IDS = "deleted_quote_ids_v2"
+        private const val KEY_PENDING_UPLOAD_PRODUCT_IDS = "pending_upload_product_ids_v2"
+        private const val KEY_PENDING_UPLOAD_MED_IDS = "pending_upload_med_ids_v2"
+        private const val KEY_PENDING_UPLOAD_QUOTE_IDS = "pending_upload_quote_ids_v2"
         private const val KEY_LAST_APP_OPEN_MILLIS = "last_app_open_millis"
         private const val KEY_LAST_ENGAGEMENT_NOTIF_EPOCH_DAY = "last_engagement_notif_epoch_day"
         private const val KEY_DELETED_PRODUCT_IDS = "deleted_product_ids"

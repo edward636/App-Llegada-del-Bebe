@@ -181,6 +181,24 @@ fun MainNavigation(
         PrenatalMedicationsViewModel(context.applicationContext as android.app.Application)
     }
 
+    // Sincronización global reactiva multi-dispositivo en ON_RESUME (al abrir o regresar a la app)
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                sharedRepository.triggerSync(googleSheetUrlState)
+                medicationsViewModel.syncWithCloud(googleSheetUrlState)
+                radarViewModel.syncQuotesWithCloud(googleSheetUrlState)
+                radarViewModel.syncStoresWithCloud(googleSheetUrlState)
+                consumablesViewModel.syncHospitalBagWithCloud(googleSheetUrlState)
+                homeViewModel.refreshSnapshot()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     fun navigateToTab(destination: NavKey) {
         if (backStack.lastOrNull() == destination) return
         if (destination is NavHome) {
@@ -188,6 +206,7 @@ fun MainNavigation(
                 backStack.removeLastOrNull()
             }
             homeViewModel.refreshSnapshot()
+            sharedRepository.triggerSync(googleSheetUrlState)
         } else {
             val current = backStack.lastOrNull()
             val isTopLevel = current is NavInventory || current is NavConsumables || current is NavMedications || current is NavShoppingRadar
@@ -195,6 +214,18 @@ fun MainNavigation(
                 backStack.removeLastOrNull()
             }
             backStack.add(destination)
+
+            // Disparar sincronización inmediata de la pestaña seleccionada
+            when (destination) {
+                is NavInventory -> sharedRepository.triggerSync(googleSheetUrlState)
+                is NavConsumables -> consumablesViewModel.syncHospitalBagWithCloud(googleSheetUrlState)
+                is NavMedications -> medicationsViewModel.syncWithCloud(googleSheetUrlState)
+                is NavShoppingRadar -> {
+                    radarViewModel.syncQuotesWithCloud(googleSheetUrlState)
+                    radarViewModel.syncStoresWithCloud(googleSheetUrlState)
+                }
+                else -> {}
+            }
         }
     }
 

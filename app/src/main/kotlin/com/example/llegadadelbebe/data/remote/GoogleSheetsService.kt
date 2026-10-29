@@ -193,10 +193,32 @@ class GoogleSheetsService {
 
     /**
      * Recupera un registro de sistema (ej: SYS_PRENATAL_MEDICATIONS, SYS_RADAR_QUOTES, SYS_KNOWN_STORES, SYS_HOSPITAL_BAG)
-     * desde Google Sheets para sincronizar entre Edward y Britney sin necesidad de cambiar el Apps Script.
+     * desde Google Sheets para sincronizar entre Edward y Britney.
+     * Utiliza la consulta rápida específica O(1) de Apps Script v2 (?action=getRecord&id=X) para máxima velocidad,
+     * con fallback automático a la descarga completa si no está disponible.
      */
     suspend fun fetchSystemRecord(webAppUrl: String, systemId: String): Result<String?> = withContext(Dispatchers.IO) {
         try {
+            // 1. Intento rápido mediante endpoint específico getRecord O(1)
+            try {
+                val separator = if (webAppUrl.contains("?")) "&" else "?"
+                val fastUrl = "$webAppUrl${separator}action=getRecord&id=$systemId"
+                val fastResponse = executeGetFollowingRedirects(fastUrl)
+                val fastJson = JSONObject(fastResponse)
+                if (fastJson.optBoolean("found", false)) {
+                    val item = fastJson.optJSONObject("item")
+                    val rawNotes = item?.optString("notes", "") ?: ""
+                    val (_, metaJson) = unpackNotesAndMeta(rawNotes)
+                    val payload = metaJson?.optString("payload")
+                    if (!payload.isNullOrBlank()) {
+                        return@withContext Result.success(payload)
+                    }
+                }
+            } catch (_: Exception) {
+                // Si falla el endpoint rápido, recurrir al método de barrido general
+            }
+
+            // 2. Fallback de barrido general en la hoja
             val response = executeGetFollowingRedirects(webAppUrl)
             val jsonObject = JSONObject(response)
             val jsonArray = jsonObject.optJSONArray("data") ?: JSONArray()

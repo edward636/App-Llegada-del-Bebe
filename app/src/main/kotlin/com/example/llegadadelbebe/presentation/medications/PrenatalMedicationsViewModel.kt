@@ -118,6 +118,7 @@ class PrenatalMedicationsViewModel(
 
         _medications.value = current
         localPreferences.saveMedicationsCache(current)
+        localPreferences.addPendingUploadMedicationId(med.id)
         syncWithCloud()
 
         // Programar alarmas para los horarios configurados
@@ -135,6 +136,7 @@ class PrenatalMedicationsViewModel(
 
     fun deleteMedication(id: String) {
         localPreferences.recordDeletedMedicationId(id)
+        localPreferences.removePendingUploadMedicationId(id)
         val med = _medications.value.firstOrNull { it.id == id }
         med?.scheduleTimes?.forEach { time ->
             MedicationAlarmScheduler.cancelMedicationAlarm(getApplication(), id, time)
@@ -170,46 +172,75 @@ class PrenatalMedicationsViewModel(
         if (sheetUrl.isBlank()) return
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val deletedIds = localPreferences.getDeletedMedicationIds()
+            val pendingUploadIds = localPreferences.getPendingUploadMedicationIds()
             val remoteResult = googleSheetsService.fetchSystemRecord(sheetUrl, GoogleSheetsService.SYS_MEDICATIONS)
+            var hasLocalChangesToUpload = pendingUploadIds.isNotEmpty()
+
             if (remoteResult.isSuccess) {
                 val remotePayload = remoteResult.getOrNull()
                 if (!remotePayload.isNullOrBlank()) {
                     val remoteList = localPreferences.parseMedicationsJson(remotePayload).filterNot { it.id in deletedIds }
-                    if (remoteList.isNotEmpty()) {
-                        val localMap = _medications.value.filterNot { it.id in deletedIds }.associateBy { it.id }.toMutableMap()
-                        val merged = mutableListOf<PrenatalMedication>()
-                        for (remote in remoteList) {
-                            val local = localMap.remove(remote.id)
-                            if (local == null) {
-                                merged.add(remote)
+                    val localMap = _medications.value.filterNot { it.id in deletedIds }.associateBy { it.id }.toMutableMap()
+                    val merged = mutableListOf<PrenatalMedication>()
+
+                    for (remote in remoteList) {
+                        val local = localMap.remove(remote.id)
+                        if (local == null) {
+                            merged.add(remote)
+                        } else {
+                            if (local.updatedAt > remote.updatedAt) {
+                                merged.add(local)
+                                hasLocalChangesToUpload = true
                             } else {
-                                if (local.updatedAt > remote.updatedAt) {
-                                    merged.add(local)
-                                } else {
-                                    merged.add(remote)
-                                }
+                                merged.add(remote)
                             }
                         }
-                        for ((_, localOnly) in localMap) {
-                            if (localOnly.id !in deletedIds) {
-                                merged.add(localOnly)
+                    }
+
+                    // Solo conservar los creados offline en este teléfono que aún no se hayan subido
+                    for ((_, localOnly) in localMap) {
+                        if (localOnly.id in pendingUploadIds && localOnly.id !in deletedIds) {
+                            merged.add(localOnly)
+                            hasLocalChangesToUpload = true
+                        } else {
+                            // Eliminado remotamente por el otro teléfono: cancelar sus alarmas
+                            localOnly.scheduleTimes.forEach { time ->
+                                MedicationAlarmScheduler.cancelMedicationAlarm(getApplication(), localOnly.id, time)
                             }
                         }
-                        _medications.value = merged
-                        localPreferences.saveMedicationsCache(merged)
+                    }
+
+                    _medications.value = merged
+                    localPreferences.saveMedicationsCache(merged)
+
+                    // Reconciliar alarmas para todas las vitaminas activas
+                    merged.forEach { med ->
+                        med.scheduleTimes.forEach { time ->
+                            MedicationAlarmScheduler.scheduleMedicationAlarm(
+                                context = getApplication(),
+                                medId = med.id,
+                                medName = med.name,
+                                dose = med.dose,
+                                instructions = med.foodInstructions,
+                                timeStr = time
+                            )
+                        }
                     }
                 }
             }
 
-            // Subir el estado unificado sin medicamentos eliminados a la nube
+            // Subir estado consolidado a la nube si hay cambios locales pendientes
             val activeMedications = _medications.value.filterNot { it.id in deletedIds }
             val jsonPayload = localPreferences.medicationsToJson(activeMedications)
-            googleSheetsService.saveSystemRecord(
+            val saveResult = googleSheetsService.saveSystemRecord(
                 webAppUrl = sheetUrl,
                 systemId = GoogleSheetsService.SYS_MEDICATIONS,
                 name = "Medicamentos Prenatales",
                 jsonPayload = jsonPayload
             )
+            if (saveResult.isSuccess && saveResult.getOrNull() == true) {
+                localPreferences.clearPendingUploadMedicationIds()
+            }
         }
     }
 }

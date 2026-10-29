@@ -51,6 +51,18 @@ class BabyInventoryRepository(
     }
 
     /**
+     * Fuerza una sincronización manual o reactiva al cambiar de pantalla o reanudar la app.
+     */
+    fun triggerSync(googleSheetUrl: String? = null) {
+        val targetUrl = googleSheetUrl?.ifBlank { activeGoogleSheetUrl } ?: activeGoogleSheetUrl
+        if (targetUrl.isNotBlank()) {
+            scope.launch {
+                syncFromGoogleSheets(targetUrl)
+            }
+        }
+    }
+
+    /**
      * Guarda o actualiza un producto en memoria, en caché local y dispara sincronización automática a Google Sheets.
      */
     fun saveProduct(product: BabyProduct, googleSheetUrl: String? = null, onSyncComplete: ((Boolean) -> Unit)? = null) {
@@ -64,12 +76,16 @@ class BabyInventoryRepository(
         }
         _products.value = currentList
         localPreferences?.saveInventoryCache(currentList)
+        localPreferences?.addPendingUploadProductId(product.id)
 
         if (targetUrl.isNotBlank()) {
             scope.launch {
                 _syncStatus.value = CloudSyncStatus.SYNCING
                 val result = sheetsService.saveProduct(targetUrl, product)
                 val isSuccess = result.isSuccess && (result.getOrNull() == true)
+                if (isSuccess) {
+                    localPreferences?.removePendingUploadProductId(product.id)
+                }
                 _syncStatus.value = if (isSuccess) CloudSyncStatus.ONLINE else CloudSyncStatus.OFFLINE
                 onSyncComplete?.invoke(isSuccess)
             }
@@ -87,6 +103,7 @@ class BabyInventoryRepository(
         val updated = _products.value.filterNot { it.id == productId }
         _products.value = updated
         localPreferences?.saveInventoryCache(updated)
+        localPreferences?.removePendingUploadProductId(productId)
         localPreferences?.addDeletedProductId(productId)
 
         if (targetUrl.isNotBlank() && itemToRemove != null) {
@@ -101,7 +118,8 @@ class BabyInventoryRepository(
     /**
      * Sincroniza y descarga el inventario completo desde la hoja de Google Sheets.
      * Implementa un Smart Two-Way Merge por [BabyProduct.updatedAt] para evitar pisar
-     * cambios o creaciones realizadas localmente mientras no había conexión a internet.
+     * cambios o creaciones realizadas localmente mientras no había conexión a internet,
+     * y distingue entre productos creados offline y eliminaciones remotas para evitar resurrección.
      */
     suspend fun syncFromGoogleSheets(googleSheetUrl: String): Result<Unit> {
         val targetUrl = googleSheetUrl.ifBlank { activeGoogleSheetUrl }
@@ -114,6 +132,7 @@ class BabyInventoryRepository(
             _syncStatus.value = CloudSyncStatus.ONLINE
             val remoteItems = result.getOrNull() ?: emptyList()
             val deletedIds = localPreferences?.getDeletedProductIds() ?: emptySet()
+            val pendingUploadIds = localPreferences?.getPendingUploadProductIds() ?: emptySet()
             val currentLocalMap = _products.value.associateBy { it.id }.toMutableMap()
             val mergedProducts = mutableListOf<BabyProduct>()
             val itemsToUpload = mutableListOf<BabyProduct>()
@@ -141,13 +160,16 @@ class BabyInventoryRepository(
                             )
                         } else remote
                         mergedProducts.add(finalRemote)
+                        localPreferences?.removePendingUploadProductId(remote.id)
                     }
                 }
             }
 
             // 2. Procesar productos creados localmente sin internet que no existen aún en la nube
+            // Solo se conservan y suben los que fueron creados/editados explícitamente en este teléfono (pendingUploadIds).
+            // Si no están en pendingUploadIds, significa que fueron eliminados en la nube por el otro dispositivo.
             for ((localId, localItem) in currentLocalMap) {
-                if (localId !in deletedIds) {
+                if (localId in pendingUploadIds && localId !in deletedIds) {
                     mergedProducts.add(localItem)
                     itemsToUpload.add(localItem)
                 }
@@ -160,7 +182,10 @@ class BabyInventoryRepository(
             if (itemsToUpload.isNotEmpty()) {
                 scope.launch {
                     itemsToUpload.forEach { item ->
-                        sheetsService.saveProduct(targetUrl, item)
+                        val res = sheetsService.saveProduct(targetUrl, item)
+                        if (res.isSuccess && res.getOrNull() == true) {
+                            localPreferences?.removePendingUploadProductId(item.id)
+                        }
                     }
                 }
             }
@@ -179,7 +204,6 @@ class BabyInventoryRepository(
                             )
                         )
                     }
-                    localPreferences?.clearDeletedProductIds()
                 }
             }
 

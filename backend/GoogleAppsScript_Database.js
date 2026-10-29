@@ -123,6 +123,16 @@ function doGet(e) {
   if (action === "checkUpdate") {
     try {
       const configSheet = getOrCreateSheet(SHEET_CONFIG);
+      let vCode = Number(configSheet.getRange(2, 1).getValue()) || 0;
+      if (vCode < 23) {
+        configSheet.getRange(2, 1, 1, 5).setValues([[
+          23,
+          "1.6.0",
+          "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.0/app-release.apk",
+          "Actualización v1.6.0 con FUR oficial 05/06/2026, reactividad multi-módulo y Gemini 3.8 Flash.",
+          new Date().toISOString()
+        ]]);
+      }
       const row = configSheet.getRange(2, 1, 1, 5).getValues()[0];
       return jsonResponse({
         latestVersionCode: Number(row[0]) || 23,
