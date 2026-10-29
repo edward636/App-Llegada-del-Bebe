@@ -23,10 +23,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.example.llegadadelbebe.core.ui.bouncyPress
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -77,8 +79,9 @@ fun BabyGrowthVisualCard(
     currentWeeks: Int,
     modifier: Modifier = Modifier
 ) {
-    val milestone = remember(currentWeeks) {
-        BabyGrowthMilestones.getMilestoneForWeek(currentWeeks)
+    var viewingWeeks by remember(currentWeeks) { mutableIntStateOf(currentWeeks) }
+    val milestone = remember(viewingWeeks) {
+        BabyGrowthMilestones.getMilestoneForWeek(viewingWeeks)
     }
 
     var selectedMode by remember { mutableIntStateOf(0) } // 0 = Fruta, 1 = Animalito
@@ -87,7 +90,7 @@ fun BabyGrowthVisualCard(
     val activeColor = if (selectedMode == 0) milestone.fruitColor else milestone.animalColor
     val activeEmoji = if (selectedMode == 0) milestone.fruitEmoji else milestone.animalEmoji
     val activeName = if (selectedMode == 0) milestone.fruitName else milestone.animalName
-    val categoryLabel = if (selectedMode == 0) "Fruta de referencia" else "Animalito compañero"
+    val categoryLabel = if (selectedMode == 0) "Fruta criolla venezolana" else "Fauna venezolana"
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -107,16 +110,36 @@ fun BabyGrowthVisualCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f, fill = false)) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "🌱 Semana $viewingWeeks de Gestación",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 15.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (viewingWeeks == currentWeeks) {
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.padding(start = 2.dp)
+                            ) {
+                                Text(
+                                    text = "Hoy",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                )
+                            }
+                        }
+                    }
                     Text(
-                        text = "🌱 Tamaño del Bebé (Semana $currentWeeks)",
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 15.sp,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = "$categoryLabel (Venezuela 🇻🇪)",
+                        text = "$categoryLabel 🇻🇪",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -126,7 +149,7 @@ fun BabyGrowthVisualCard(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Selector de modo pill
+                // Selector de modo pill con física táctil
                 Surface(
                     shape = RoundedCornerShape(20.dp),
                     color = MaterialTheme.colorScheme.surfaceVariant,
@@ -142,6 +165,91 @@ fun BabyGrowthVisualCard(
                             text = "🐾 Fauna",
                             isSelected = selectedMode == 1,
                             onClick = { selectedMode = 1 }
+                        )
+                    }
+                }
+            }
+
+            // Línea de Tiempo Gestacional Continua (Continuous Timeline Flow)
+            val timelineListState = rememberLazyListState()
+            LaunchedEffect(viewingWeeks) {
+                val index = (viewingWeeks - 4).coerceIn(0, 36)
+                timelineListState.animateScrollToItem((index - 2).coerceAtLeast(0))
+            }
+
+            LazyRow(
+                state = timelineListState,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                items(37) { idx ->
+                    val week = idx + 4
+                    val isSelected = week == viewingWeeks
+                    val isCurrentWeek = week == currentWeeks
+                    val weekMilestone = BabyGrowthMilestones.getMilestoneForWeek(week)
+                    val emoji = if (selectedMode == 0) weekMilestone.fruitEmoji else weekMilestone.animalEmoji
+
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = when {
+                            isSelected -> MaterialTheme.colorScheme.primary
+                            isCurrentWeek -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+                            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        },
+                        border = BorderStroke(
+                            width = if (isCurrentWeek && !isSelected) 1.5.dp else 1.dp,
+                            color = when {
+                                isSelected -> MaterialTheme.colorScheme.primary
+                                isCurrentWeek -> MaterialTheme.colorScheme.primary
+                                else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f)
+                            }
+                        ),
+                        modifier = Modifier.bouncyPress { viewingWeeks = week }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(text = emoji, fontSize = 13.sp)
+                            Text(
+                                text = "Sem $week",
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected || isCurrentWeek) FontWeight.Bold else FontWeight.Medium,
+                                color = when {
+                                    isSelected -> Color.White
+                                    isCurrentWeek -> MaterialTheme.colorScheme.primary
+                                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Si el usuario navegó a otra semana, ofrecer retorno instantáneo a la semana actual
+            if (viewingWeeks != currentWeeks) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Viendo hito de la semana $viewingWeeks",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                        modifier = Modifier.bouncyPress { viewingWeeks = currentWeeks }
+                    ) {
+                        Text(
+                            text = "↩ Volver a hoy (Sem $currentWeeks)",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
                     }
                 }
@@ -430,7 +538,7 @@ private fun PillOption(
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = bg,
-        modifier = Modifier.clickable(onClick = onClick)
+        modifier = Modifier.bouncyPress(onClick = onClick)
     ) {
         Text(
             text = text,

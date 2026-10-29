@@ -97,7 +97,7 @@ object CatalogImageFetcher {
         }
 
         val raw = tokens.joinToString(" ").trim()
-        return if (raw.isNotBlank()) "$raw fondo blanco" else ""
+        return if (raw.isNotBlank()) "$raw producto empaque original" else ""
     }
 
     /**

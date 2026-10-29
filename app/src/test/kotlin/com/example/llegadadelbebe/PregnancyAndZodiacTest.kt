@@ -120,7 +120,7 @@ class PregnancyAndZodiacTest {
             model = "Recién Nacido"
         )
         assertTrue(q1.contains("Pampers"))
-        assertTrue(q1.contains("fondo blanco"))
+        assertTrue(q1.contains("empaque original"))
 
         val q2 = CatalogImageFetcher.buildCleanQuery(
             name = "Mustela Crema Facial Hydra Bebe",
@@ -128,7 +128,7 @@ class PregnancyAndZodiacTest {
             model = ""
         )
         assertTrue(q2.contains("Mustela"))
-        assertTrue(q2.contains("fondo blanco"))
+        assertTrue(q2.contains("empaque original"))
     }
 
     @Test
