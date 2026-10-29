@@ -19,7 +19,8 @@ import kotlinx.coroutines.launch
 class ConsumablesAuditViewModel(
     private val repository: BabyInventoryRepository,
     private val evaluateUseCase: EvaluateConsumablesUseCase = EvaluateConsumablesUseCase(),
-    private val geminiClient: GeminiClient = GeminiClient()
+    private val geminiClient: GeminiClient = GeminiClient(),
+    private val localPreferences: com.example.llegadadelbebe.core.storage.LocalPreferences? = null
 ) : ViewModel() {
 
     private val _geminiAdvice = MutableStateFlow("")
@@ -65,7 +66,16 @@ class ConsumablesAuditViewModel(
                 }
                 .ifBlank { "- Sin artículos marcados como pendientes." }
 
+            val lmp = localPreferences?.getLmpDate() ?: com.example.llegadadelbebe.core.storage.LocalPreferences.DEFAULT_LMP_DATE
+            val stats = com.example.llegadadelbebe.core.util.PregnancyCalculator.calculateFromLmp(lmp)
+            val furFormatted = stats.lmpDate.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+
             val summaryText = """
+                ESTADO GESTACIONAL DE EDWARD Y BRITNEY:
+                - Fecha de Última Regla (FUR / FUM): $furFormatted
+                - Semanas actuales: Semana ${stats.currentWeeks} + ${stats.currentDays} días (${if (stats.trimester == 1) "1er" else if (stats.trimester == 2) "2do" else "3er"} Trimestre)
+                - Días restantes para el parto: ${stats.daysRemaining} días
+
                 ARTÍCULOS QUE YA TENEMOS EN EL INVENTARIO:
                 $ownedText
 

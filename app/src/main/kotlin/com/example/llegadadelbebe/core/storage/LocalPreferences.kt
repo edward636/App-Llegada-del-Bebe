@@ -30,13 +30,20 @@ class LocalPreferences(context: Context) {
     }
 
     fun getLmpDate(): LocalDate {
-        val defaultEpoch = LocalDate.now().minusWeeks(27).minusDays(2).toEpochDay()
-        val savedEpoch = prefs.getLong(KEY_LMP_EPOCH_DAY, defaultEpoch)
+        val isInitializedV3 = prefs.getBoolean(KEY_LMP_INITIALIZED_V3, false)
+        if (!isInitializedV3) {
+            saveLmpDate(DEFAULT_LMP_DATE)
+            return DEFAULT_LMP_DATE
+        }
+        val savedEpoch = prefs.getLong(KEY_LMP_EPOCH_DAY, DEFAULT_LMP_DATE.toEpochDay())
         return LocalDate.ofEpochDay(savedEpoch)
     }
 
     fun saveLmpDate(date: LocalDate) {
-        prefs.edit().putLong(KEY_LMP_EPOCH_DAY, date.toEpochDay()).apply()
+        prefs.edit()
+            .putLong(KEY_LMP_EPOCH_DAY, date.toEpochDay())
+            .putBoolean(KEY_LMP_INITIALIZED_V3, true)
+            .apply()
     }
 
     fun getActiveUser(): String =
@@ -596,9 +603,11 @@ class LocalPreferences(context: Context) {
     }
 
     companion object {
+        val DEFAULT_LMP_DATE: LocalDate = LocalDate.of(2026, 6, 5) // FUR oficial 05/06/2026 (Edward & Britney)
         private const val PREFS_NAME = "llegada_del_bebe_prefs"
         private const val KEY_BABY_NAME = "baby_name"
         private const val KEY_LMP_EPOCH_DAY = "lmp_epoch_day"
+        private const val KEY_LMP_INITIALIZED_V3 = "lmp_initialized_v3_fixed"
         private const val KEY_ACTIVE_USER = "active_user"
         private const val KEY_INVENTORY_CACHE = "inventory_cache_json"
         private const val KEY_HOSPITAL_BAG_CHECKED = "hospital_bag_checked_ids"

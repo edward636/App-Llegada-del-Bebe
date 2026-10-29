@@ -163,7 +163,7 @@ fun MainNavigation(
     }
 
     val consumablesViewModel: ConsumablesAuditViewModel = viewModel {
-        ConsumablesAuditViewModel(sharedRepository)
+        ConsumablesAuditViewModel(sharedRepository, localPreferences = localPreferences)
     }
 
     val synastryViewModel: FamilySynastryViewModel = viewModel {
@@ -187,6 +187,7 @@ fun MainNavigation(
             while (backStack.size > 1) {
                 backStack.removeLastOrNull()
             }
+            homeViewModel.refreshSnapshot()
         } else {
             val current = backStack.lastOrNull()
             val isTopLevel = current is NavInventory || current is NavConsumables || current is NavMedications || current is NavShoppingRadar
@@ -287,6 +288,7 @@ fun MainNavigation(
                                 localPreferences.saveLmpDate(newLmp)
                                 localPreferences.saveActiveUser(newUser)
                                 homeViewModel.updateBabySettings(newName, newLmp)
+                                homeViewModel.refreshSnapshot()
                                 inventoryViewModel.setActiveUser(newUser)
                                 radarViewModel.setActiveUser(newUser)
                                 medicationsViewModel.setActiveUser(newUser)

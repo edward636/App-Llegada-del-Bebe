@@ -364,4 +364,29 @@ class PregnancyAndZodiacTest {
         assertEquals(15, window.size) // -7 a +7 = 15 días
         assertTrue(window.any { it.isFppDay })
     }
+
+    @Test
+    fun testPregnancyCalculator_EdwardBritneyOfficialLmpDate() {
+        // FUR Oficial declarada por el usuario: 05/06/2026
+        val officialLmp = LocalDate.of(2026, 6, 5)
+        val simulatedDate = LocalDate.of(2026, 10, 28)
+
+        val stats = PregnancyCalculator.calculateFromLmp(officialLmp, today = simulatedDate)
+        assertEquals(20, stats.currentWeeks)
+        assertEquals(5, stats.currentDays)
+        assertEquals(2, stats.trimester) // 2do Trimestre
+        assertEquals(LocalDate.of(2027, 3, 12), stats.estimatedDueDate) // FPP Naegele = 12/03/2027
+        assertEquals(135L, stats.daysRemaining) // 280 - 145 = 135 días
+        assertEquals(officialLmp, stats.lmpDate)
+
+        // Hito venezolano de la semana 20
+        assertEquals(20, stats.growthMilestone.week)
+        assertEquals("Plátano maduro venezolano", stats.growthMilestone.fruitName)
+        assertEquals("Cunaguarito recién nacido", stats.growthMilestone.animalName)
+        assertEquals(25.6, stats.growthMilestone.lengthCm, 0.1)
+        assertEquals(300.0, stats.growthMilestone.weightGrams, 0.1)
+
+        // Verificación de constante en LocalPreferences
+        assertEquals(officialLmp, com.example.llegadadelbebe.core.storage.LocalPreferences.DEFAULT_LMP_DATE)
+    }
 }

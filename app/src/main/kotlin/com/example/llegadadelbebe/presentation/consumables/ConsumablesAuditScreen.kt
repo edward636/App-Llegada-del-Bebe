@@ -225,7 +225,7 @@ fun ConsumablesAuditScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "🤖 Diagnóstico Pediátrico con IA (Gemini 3.8)",
+                            text = "🤖 Diagnóstico Pediátrico con Gemini 3.8 Flash",
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
                             color = MaterialTheme.colorScheme.primary
@@ -246,7 +246,7 @@ fun ConsumablesAuditScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                     } else {
                         Text(
-                            text = "Gemini analiza la fecha de parto, el inventario actual y les aconseja qué priorizar para la maleta de la clínica y las primeras semanas sin gastar de más.",
+                            text = "Gemini 3.8 Flash analiza la fecha de última regla (05/06/2026), semanas de gestación e inventario actual para aconsejar qué priorizar sin gastar de más en comercios de Venezuela.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )

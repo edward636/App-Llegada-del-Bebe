@@ -85,6 +85,7 @@ fun HomeScreen(
 
     LaunchedEffect(activeUser) {
         viewModel.refreshDailyWisdom(geminiApiKey, activeUser)
+        viewModel.refreshSnapshot()
     }
 
     Column(

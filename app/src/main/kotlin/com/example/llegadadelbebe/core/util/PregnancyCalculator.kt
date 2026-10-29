@@ -16,24 +16,26 @@ data class PregnancyStats(
     val progressPercent: Float,
     val babySizeComparison: String,
     val babyWeightEstimate: String,
-    val growthMilestone: BabyGrowthMilestone = BabyGrowthMilestones.getMilestoneForWeek(currentWeeks)
+    val growthMilestone: BabyGrowthMilestone = BabyGrowthMilestones.getMilestoneForWeek(currentWeeks),
+    val lmpDate: LocalDate = estimatedDueDate.minusDays(280L)
 )
 
 /**
  * Utilidad clínica para cálculo gestacional basado en la Regla de Naegele.
- * FPP = FUM + 7 días - 3 meses + 1 año (40 semanas gestacionales estándar).
+ * FPP = FUM + 7 días - 3 meses + 1 año (40 semanas gestacionales estándar = 280 días).
  */
 object PregnancyCalculator {
 
-    private const val TOTAL_GESTATIONAL_DAYS = 280L // 40 semanas
+    const val TOTAL_GESTATIONAL_DAYS = 280L // 40 semanas
+    val CLINICAL_DEFAULT_LMP: LocalDate = LocalDate.of(2026, 6, 5)
 
     /**
-     * Calcula estadísticas a partir de la Fecha de Última Menstruación (FUM).
+     * Calcula estadísticas a partir de la Fecha de Última Menstruación (FUM / FUR).
      */
     fun calculateFromLmp(lmp: LocalDate, today: LocalDate = LocalDate.now()): PregnancyStats {
         val estimatedDueDate = lmp.plusDays(TOTAL_GESTATIONAL_DAYS)
         val daysPassed = ChronoUnit.DAYS.between(lmp, today).coerceAtLeast(0)
-        return buildStats(daysPassed, estimatedDueDate, today)
+        return buildStats(daysPassed, estimatedDueDate, today, lmp)
     }
 
     /**
@@ -42,7 +44,7 @@ object PregnancyCalculator {
     fun calculateFromDueDate(dueDate: LocalDate, today: LocalDate = LocalDate.now()): PregnancyStats {
         val lmp = dueDate.minusDays(TOTAL_GESTATIONAL_DAYS)
         val daysPassed = ChronoUnit.DAYS.between(lmp, today).coerceAtLeast(0)
-        return buildStats(daysPassed, dueDate, today)
+        return buildStats(daysPassed, dueDate, today, lmp)
     }
 
     /**
@@ -51,10 +53,11 @@ object PregnancyCalculator {
     fun calculateFromCurrentWeeks(weeks: Int, days: Int = 0, today: LocalDate = LocalDate.now()): PregnancyStats {
         val totalDaysPassed = (weeks * 7L) + days
         val dueDate = today.plusDays(TOTAL_GESTATIONAL_DAYS - totalDaysPassed)
-        return buildStats(totalDaysPassed, dueDate, today)
+        val lmp = dueDate.minusDays(TOTAL_GESTATIONAL_DAYS)
+        return buildStats(totalDaysPassed, dueDate, today, lmp)
     }
 
-    private fun buildStats(daysPassed: Long, dueDate: LocalDate, today: LocalDate): PregnancyStats {
+    private fun buildStats(daysPassed: Long, dueDate: LocalDate, today: LocalDate, lmp: LocalDate): PregnancyStats {
         val weeks = (daysPassed / 7).toInt().coerceIn(0, 42)
         val days = (daysPassed % 7).toInt().coerceIn(0, 6)
         val daysRemaining = ChronoUnit.DAYS.between(today, dueDate).coerceAtLeast(0)
@@ -82,7 +85,8 @@ object PregnancyCalculator {
             progressPercent = progress,
             babySizeComparison = sizeDesc,
             babyWeightEstimate = weightDesc,
-            growthMilestone = milestone
+            growthMilestone = milestone,
+            lmpDate = lmp
         )
     }
 }

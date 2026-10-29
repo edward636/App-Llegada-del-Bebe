@@ -44,13 +44,12 @@ class HomeViewModel(
 
     private val geminiClient: GeminiClient = GeminiClient()
 
-    private val _babyName = MutableStateFlow("Nuestro Niño")
+    private val _babyName = MutableStateFlow(localPreferences?.getBabyName() ?: "Nuestro Niño")
     val babyName: StateFlow<String> = _babyName.asStateFlow()
 
-    // Fecha de Última Regla (FUR / FUM) - Naegele clínico
-    // Por defecto calculada hacia atrás desde la semana 27 + 2 días actuales
+    // Fecha de Última Regla (FUR / FUM) - Naegele clínico oficial 05/06/2026
     private val _lmpDate = MutableStateFlow<LocalDate>(
-        LocalDate.now().minusWeeks(27).minusDays(2)
+        localPreferences?.getLmpDate() ?: LocalPreferences.DEFAULT_LMP_DATE
     )
     val lmpDate: StateFlow<LocalDate> = _lmpDate.asStateFlow()
 
@@ -84,11 +83,17 @@ class HomeViewModel(
     )
 
     private val omniUseCase = OmniPregnancyContextUseCase()
+    private val _refreshTrigger = MutableStateFlow(0)
+
+    fun refreshSnapshot() {
+        _refreshTrigger.value += 1
+    }
 
     val omniSnapshot: StateFlow<OmniDashboardSnapshot> = combine(
         _lmpDate,
-        repository.products
-    ) { lmp, prods ->
+        repository.products,
+        _refreshTrigger
+    ) { lmp, prods, _ ->
         val meds = localPreferences?.getMedicationsCache() ?: emptyList()
         val quotes = localPreferences?.getRadarQuotesCache() ?: emptyList()
         val bagIds = localPreferences?.getHospitalBagCheckedIds() ?: emptySet()
@@ -168,7 +173,8 @@ class HomeViewModel(
                 daysRemaining = stats.daysRemaining,
                 purchasedCount = sum.purchasedCount,
                 totalItems = sum.totalItems,
-                apiKey = apiKey
+                apiKey = apiKey,
+                lmpDate = stats.lmpDate.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
             )
 
             val finalMsg = result.getOrElse {
@@ -184,11 +190,12 @@ class HomeViewModel(
         val isMom = user.contains("Mamá", ignoreCase = true)
         val name = if (isMom) "Mamita Britney 🌸" else "Papá Edward 💙"
         val partner = if (isMom) "Edward" else "Britney"
+        val furFormatted = stats.lmpDate.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))
 
         return if (isMom) {
-            "¡Buenos días, $name! Hoy estás en la semana ${stats.currentWeeks} + ${stats.currentDays} días y tu bebé tiene el tamaño de ${stats.babySizeComparison}. En casa ya tienen ${sum.purchasedCount} de ${sum.totalItems} artículos listos para su llegada. Recuerda tomar tus vitaminas, hidratarte y disfrutar cada patadita junto a $partner."
+            "¡Buenos días, $name! Con FUR del $furFormatted, hoy estás en la semana ${stats.currentWeeks} + ${stats.currentDays} días y tu bebé tiene el tamaño de ${stats.babySizeComparison}. En casa ya tienen ${sum.purchasedCount} de ${sum.totalItems} artículos listos para su llegada. Recuerda tomar tus vitaminas, hidratarte y disfrutar cada patadita junto a $partner."
         } else {
-            "¡Buenos días, $name! Tu bebé está en la semana ${stats.currentWeeks} + ${stats.currentDays} días, creciendo sano y midiendo como ${stats.babySizeComparison}. Tienen ${sum.purchasedCount} artículos listos en el inventario. Hoy es un gran día para consentir a $partner, recordarle sus vitaminas y soñar juntos con la llegada del pequeño."
+            "¡Buenos días, $name! Con FUR del $furFormatted, tu bebé está en la semana ${stats.currentWeeks} + ${stats.currentDays} días, creciendo sano y midiendo como ${stats.babySizeComparison}. Tienen ${sum.purchasedCount} artículos listos en el inventario. Hoy es un gran día para consentir a $partner, recordarle sus vitaminas y soñar juntos con la llegada del pequeño."
         }
     }
 

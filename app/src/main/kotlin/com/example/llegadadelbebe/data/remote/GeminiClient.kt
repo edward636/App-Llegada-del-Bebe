@@ -636,13 +636,15 @@ class GeminiClient(
         daysRemaining: Long,
         purchasedCount: Int,
         totalItems: Int,
-        apiKey: String
+        apiKey: String,
+        lmpDate: String = "05/06/2026"
     ): Result<String> = withContext(Dispatchers.IO) {
         try {
             val isMom = activeUser.contains("Mamá", ignoreCase = true)
             val prompt = """
                 Eres el asesor pediátrico y de apego más cariñoso para los padres Britney y Edward en la dulce espera de su bebé '$babyName'.
                 Hoy están en:
+                - Fecha de Última Regla (FUR / FUM): $lmpDate.
                 - Semana gestacional: $gestationalWeeks semanas + $gestationalDays días.
                 - Tamaño de referencia del bebé hoy: $babySizeComparison.
                 - Días restantes para el parto: $daysRemaining días.

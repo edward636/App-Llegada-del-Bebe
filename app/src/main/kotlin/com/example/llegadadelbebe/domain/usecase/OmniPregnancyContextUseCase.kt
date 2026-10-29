@@ -138,8 +138,9 @@ class OmniPregnancyContextUseCase(
             Bebé en camino: $babyName.
             
             ESTADO INTEGRAL 360° DE LA FAMILIA:
-            - Semana Gestacional: ${snapshot.pregnancyStats.currentWeeks} semanas + ${snapshot.pregnancyStats.currentDays} días.
-            - Faltan: ${snapshot.pregnancyStats.daysRemaining} días para la Fecha Probable de Parto (${snapshot.pregnancyStats.estimatedDueDate}).
+            - Fecha de Última Regla (FUR / FUM): ${snapshot.pregnancyStats.lmpDate.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))}.
+            - Semana Gestacional: ${snapshot.pregnancyStats.currentWeeks} semanas + ${snapshot.pregnancyStats.currentDays} días (${if (snapshot.pregnancyStats.trimester == 1) "1er" else if (snapshot.pregnancyStats.trimester == 2) "2do" else "3er"} Trimestre).
+            - Fecha Probable de Parto (FPP según Naegele): ${snapshot.pregnancyStats.estimatedDueDate.format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy"))} (Faltan ${snapshot.pregnancyStats.daysRemaining} días).
             - Fruta Criolla y Fauna Venezolana de referencia: ${snapshot.pregnancyStats.growthMilestone.fruitName} (${snapshot.pregnancyStats.growthMilestone.lengthCm} cm, ${snapshot.pregnancyStats.growthMilestone.weightGrams} g) / ${snapshot.pregnancyStats.growthMilestone.animalName}.
             - Índice de Preparación General: ${snapshot.readinessScorePercent}% sobre 100%.
               * Preparación de Inventario: ${snapshot.inventoryScorePercent}%
