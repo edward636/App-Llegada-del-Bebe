@@ -35,7 +35,10 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.example.llegadadelbebe.core.ui.bouncyPress
+import com.example.llegadadelbebe.core.util.ImageCaptureHelper
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -207,9 +210,7 @@ fun ShoppingRadarScreen(
 
     val launchCamera = {
         try {
-            val photoFile = File(context.cacheDir, "radar_capture.jpg")
-            photoFile.parentFile?.mkdirs()
-            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", photoFile)
+            val uri = ImageCaptureHelper.createCameraTempUri(context, "radar_capture")
             pendingPhotoUri = uri
             cameraLauncher.launch(uri)
         } catch (e: Exception) {
@@ -221,6 +222,77 @@ fun ShoppingRadarScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) launchCamera() else radarErrorMessage = "Permiso de cámara requerido para escanear precios."
+    }
+
+    val radarGalleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            coroutineScope.launch {
+                val triple = runCatching { readAndCompressPhotoWithExif(context, uri) }.getOrNull()
+                if (triple != null) {
+                    val (base64, bmp, exifCoords) = triple
+                    val barcode = bmp?.let { BarcodeScannerHelper.scanBarcode(it) } ?: ""
+
+                    val liveLoc = StoreLocationHelper.captureCurrentStoreLocation(context, knownStores = knownStores)
+                    val finalLat = exifCoords?.first ?: liveLoc.latitude
+                    val finalLon = exifCoords?.second ?: liveLoc.longitude
+
+                    val matchedNearby = StoreLocationHelper.findNearbyKnownStore(finalLat, finalLon, knownStores)
+                    val gmapsPlace = if (finalLat != 0.0 && finalLon != 0.0) {
+                        StoreLocationHelper.resolveGoogleMapsPlace(context, finalLat, finalLon)
+                    } else null
+                    val detectedStoreName = matchedNearby?.name ?: liveLoc.name.ifBlank { gmapsPlace?.placeName ?: "" }
+                    val resolvedGmapsName = gmapsPlace?.placeName ?: liveLoc.googleMapsName
+
+                    viewModel.analyzePricePhoto(base64, geminiApiKey) { parsed ->
+                        if (parsed != null) {
+                            val resolvedStoreName = when {
+                                detectedStoreName.isNotBlank() -> detectedStoreName
+                                parsed.storeNameHint.isNotBlank() -> parsed.storeNameHint
+                                else -> ""
+                            }
+
+                            val draft = ProductPriceQuote(
+                                productName = parsed.productName,
+                                brand = parsed.brand,
+                                category = parsed.category,
+                                stageSize = parsed.stageSize,
+                                packageCount = parsed.packageCount,
+                                unitsPerPackage = parsed.unitsPerPackage,
+                                storeName = resolvedStoreName,
+                                storeAddress = matchedNearby?.address ?: (gmapsPlace?.fullAddress ?: liveLoc.address),
+                                latitude = finalLat,
+                                longitude = finalLon,
+                                priceAmount = parsed.priceAmount,
+                                priceCurrency = if (parsed.priceCurrency == "VES") CurrencyType.VES else CurrencyType.USD,
+                                bcvRateApplied = bcvRate.rate,
+                                priceUsdEquivalent = if (parsed.priceCurrency == "VES" && bcvRate.rate > 0) parsed.priceAmount / bcvRate.rate else parsed.priceAmount,
+                                unitPriceUsd = 0.0,
+                                quotedAt = "",
+                                photoBase64 = base64,
+                                notes = parsed.notes,
+                                barcode = if (parsed.barcode.isNotBlank()) parsed.barcode else barcode,
+                                googleMapsName = resolvedGmapsName
+                            )
+
+                            viewModel.lookupFarmatodoBenchmark(
+                                barcode = draft.barcode,
+                                productName = draft.productName,
+                                brand = draft.brand
+                            ) { ftResult ->
+                                pendingQuoteDraft = draft.copy(farmatodoBenchmark = ftResult)
+                                showAddDialog = true
+                            }
+                        } else {
+                            radarErrorMessage = "No se pudieron extraer datos del hablador. Intenta con más luz o usa registro manual con ➕."
+                        }
+                    }
+                } else {
+                    radarErrorMessage = "No se pudo procesar la imagen seleccionada."
+                }
+            }
+        }
     }
 
     Scaffold(
@@ -280,20 +352,40 @@ fun ShoppingRadarScreen(
         },
         floatingActionButton = {
             if (selectedTab == 0) {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.End) {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalAlignment = Alignment.End
+                ) {
+                    // 1. Escanear con Cámara e IA (solo icono)
                     FloatingActionButton(
                         onClick = {
                             val hasCam = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
                             if (hasCam) launchCamera() else cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                         },
                         containerColor = MaterialTheme.colorScheme.primary,
-                        shape = RoundedCornerShape(16.dp)
+                        contentColor = Color.White,
+                        shape = CircleShape,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .bouncyPress()
                     ) {
-                        Row(modifier = Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("📷 Escanear Anaquel", fontWeight = FontWeight.Bold, color = Color.White)
-                        }
+                        Text("📷", fontSize = 20.sp)
                     }
 
+                    // 2. Escanear desde Galería con IA (solo icono)
+                    FloatingActionButton(
+                        onClick = { radarGalleryLauncher.launch("image/*") },
+                        containerColor = MaterialTheme.colorScheme.tertiary,
+                        contentColor = Color.White,
+                        shape = CircleShape,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .bouncyPress()
+                    ) {
+                        Text("🖼️", fontSize = 20.sp)
+                    }
+
+                    // 3. Registrar Cotización Manual / Barcode (solo icono)
                     FloatingActionButton(
                         onClick = {
                             coroutineScope.launch {
@@ -316,12 +408,13 @@ fun ShoppingRadarScreen(
                             }
                         },
                         containerColor = MaterialTheme.colorScheme.secondary,
-                        shape = RoundedCornerShape(16.dp),
-                        modifier = Modifier.padding(bottom = 6.dp)
+                        contentColor = Color.White,
+                        shape = CircleShape,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .bouncyPress()
                     ) {
-                        Row(modifier = Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text("➕ Manual / Barcode", fontWeight = FontWeight.Bold, color = Color.White)
-                        }
+                        Text("➕", fontSize = 20.sp)
                     }
                 }
             }

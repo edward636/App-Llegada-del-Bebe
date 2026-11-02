@@ -35,7 +35,9 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import com.example.llegadadelbebe.core.ui.bouncyPress
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -352,6 +354,7 @@ fun InventoryScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.End
             ) {
+                // 1. Escanear con Cámara e IA (solo icono)
                 FloatingActionButton(
                     onClick = {
                         val hasCamPerm = ContextCompat.checkSelfPermission(
@@ -365,28 +368,39 @@ fun InventoryScreen(
                         }
                     },
                     containerColor = MaterialTheme.colorScheme.primary,
-                    shape = RoundedCornerShape(16.dp)
+                    contentColor = Color.White,
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .bouncyPress()
                 ) {
-                    Row(modifier = Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("📷 Foto Gemini", fontWeight = FontWeight.Bold, color = Color.White)
-                    }
+                    Text("📷", fontSize = 20.sp)
                 }
 
+                // 2. Escanear desde Galería con IA (solo icono)
                 FloatingActionButton(
                     onClick = { galleryLauncher.launch("image/*") },
                     containerColor = MaterialTheme.colorScheme.tertiary,
-                    shape = RoundedCornerShape(16.dp)
+                    contentColor = Color.White,
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .bouncyPress()
                 ) {
-                    Text("🖼️ Galería IA", fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(horizontal = 12.dp))
+                    Text("🖼️", fontSize = 20.sp)
                 }
 
+                // 3. Registrar Producto Manual (solo icono)
                 FloatingActionButton(
                     onClick = { showAddDialog = true },
                     containerColor = MaterialTheme.colorScheme.secondary,
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    contentColor = Color.White,
+                    shape = CircleShape,
+                    modifier = Modifier
+                        .size(48.dp)
+                        .bouncyPress()
                 ) {
-                    Text("➕ Manual", fontWeight = FontWeight.Bold, color = Color.White, modifier = Modifier.padding(horizontal = 12.dp))
+                    Text("➕", fontSize = 20.sp)
                 }
             }
         }

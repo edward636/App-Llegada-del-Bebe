@@ -1,6 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <paths xmlns:android="http://schemas.android.com/apk/res/android">
-    <cache-path name="updates" path="updates/" />
-    <external-cache-path name="updates_ext" path="updates/" />
+    <cache-path name="cache_root" path="." />
     <cache-path name="camera_photos" path="camera_photos/" />
+    <cache-path name="updates" path="updates/" />
+    <external-cache-path name="external_cache_root" path="." />
+    <external-cache-path name="updates_ext" path="updates/" />
+    <files-path name="files_root" path="." />
 </paths>

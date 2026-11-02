@@ -127,7 +127,7 @@ class PrenatalMedicationsTest {
 
         val updatedMed = initialMed.copy(
             pillsRemaining = (initialMed.pillsRemaining - 1).coerceAtLeast(0),
-            lastTakenDate = "2026-10-28",
+            lastTakenDate = java.time.LocalDate.now().toString(),
             lastTakenTime = "08:15",
             lastConfirmedBy = "Mamá (Britney)"
         )

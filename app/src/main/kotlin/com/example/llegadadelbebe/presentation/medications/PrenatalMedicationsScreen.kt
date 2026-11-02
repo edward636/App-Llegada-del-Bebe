@@ -1,5 +1,7 @@
 package com.example.llegadadelbebe.presentation.medications
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -60,6 +62,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,10 +78,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.core.content.FileProvider
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.llegadadelbebe.core.ui.bouncyPress
+import com.example.llegadadelbebe.core.util.ImageCaptureHelper
 import com.example.llegadadelbebe.domain.model.MedicationAdherenceSummary
 import com.example.llegadadelbebe.domain.model.PrenatalMedication
+import kotlinx.coroutines.launch
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.UUID
@@ -99,25 +105,16 @@ fun PrenatalMedicationsScreen(
         viewModel.refreshMedications()
     }
 
+    val coroutineScope = rememberCoroutineScope()
     var showEditorDialog by remember { mutableStateOf(false) }
     var selectedMedForEdit by remember { mutableStateOf<PrenatalMedication?>(null) }
     var pendingPhotoUri by remember { mutableStateOf<Uri?>(null) }
     var analysisErrorMessage by remember { mutableStateOf("") }
 
-    val cameraLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.TakePicture()
-    ) { success ->
-        if (success && pendingPhotoUri != null) {
-            val base64 = runCatching {
-                val input = context.contentResolver.openInputStream(pendingPhotoUri!!)
-                val bytes = input?.use { it.readBytes() } ?: return@runCatching ""
-                val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                val out = ByteArrayOutputStream()
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 80, out)
-                Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP)
-            }.getOrDefault("")
-
-            if (base64.isNotBlank()) {
+    val processMedicationUri: (Uri) -> Unit = { uri ->
+        coroutineScope.launch {
+            val base64 = ImageCaptureHelper.uriToOptimizedBase64(context, uri)
+            if (!base64.isNullOrBlank()) {
                 viewModel.analyzeMedicationPhoto(base64, geminiApiKey) { parsed ->
                     if (parsed != null) {
                         val newMed = PrenatalMedication(
@@ -136,18 +133,59 @@ fun PrenatalMedicationsScreen(
                         selectedMedForEdit = newMed
                         showEditorDialog = true
                     } else {
-                        analysisErrorMessage = "No se pudieron extraer datos legibles de la caja. Puedes registrarla manualmente."
+                        analysisErrorMessage = "No se pudieron extraer datos legibles de la caja. Puedes registrarla con el botón ➕."
                     }
                 }
+            } else {
+                analysisErrorMessage = "No se pudo procesar la fotografía de la vitamina."
             }
         }
     }
 
-    val launchCamera = {
-        val file = File(context.cacheDir, "camera_med_${System.currentTimeMillis()}.jpg")
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-        pendingPhotoUri = uri
-        cameraLauncher.launch(uri)
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        val uri = pendingPhotoUri
+        if (success && uri != null) {
+            processMedicationUri(uri)
+        }
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            processMedicationUri(uri)
+        }
+    }
+
+    val launchCameraDirect = {
+        try {
+            val uri = ImageCaptureHelper.createCameraTempUri(context, "camera_med")
+            pendingPhotoUri = uri
+            cameraLauncher.launch(uri)
+        } catch (e: Exception) {
+            analysisErrorMessage = "Error al abrir la cámara: ${e.localizedMessage}"
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            launchCameraDirect()
+        } else {
+            analysisErrorMessage = "Permiso de cámara denegado. Es necesario para escanear cajas de medicamentos."
+        }
+    }
+
+    val launchCameraSafe = {
+        val hasCam = ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        if (hasCam) {
+            launchCameraDirect()
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
     }
 
     Box(
@@ -298,25 +336,51 @@ fun PrenatalMedicationsScreen(
             }
         }
 
-        // Botón Flotante para Escanear / Registrar
-        FloatingActionButton(
-            onClick = {
-                selectedMedForEdit = null
-                showEditorDialog = true
-            },
+        // Botones Flotantes Compactos de solo icono para Escanear (Cámara / Galería) y Registro Manual
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(20.dp),
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = Color.White,
-            shape = RoundedCornerShape(18.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalAlignment = Alignment.End
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            FloatingActionButton(
+                onClick = launchCameraSafe,
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = Color.White,
+                shape = CircleShape,
+                modifier = Modifier
+                    .size(48.dp)
+                    .bouncyPress()
             ) {
-                Text("📷 Escanear Caja", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                Text("📷", fontSize = 20.sp)
+            }
+
+            FloatingActionButton(
+                onClick = { galleryLauncher.launch("image/*") },
+                containerColor = MaterialTheme.colorScheme.tertiary,
+                contentColor = Color.White,
+                shape = CircleShape,
+                modifier = Modifier
+                    .size(48.dp)
+                    .bouncyPress()
+            ) {
+                Text("🖼️", fontSize = 20.sp)
+            }
+
+            FloatingActionButton(
+                onClick = {
+                    selectedMedForEdit = null
+                    showEditorDialog = true
+                },
+                containerColor = MaterialTheme.colorScheme.secondary,
+                contentColor = Color.White,
+                shape = CircleShape,
+                modifier = Modifier
+                    .size(48.dp)
+                    .bouncyPress()
+            ) {
+                Text("➕", fontSize = 20.sp)
             }
         }
     }
@@ -328,7 +392,8 @@ fun PrenatalMedicationsScreen(
                 showEditorDialog = false
                 selectedMedForEdit = null
             },
-            onScanCamera = launchCamera,
+            onScanCamera = launchCameraSafe,
+            onScanGallery = { galleryLauncher.launch("image/*") },
             onSave = { savedMed ->
                 viewModel.saveMedication(savedMed)
                 showEditorDialog = false
@@ -595,6 +660,7 @@ fun MedicationEditorDialog(
     initial: PrenatalMedication?,
     onDismiss: () -> Unit,
     onScanCamera: () -> Unit,
+    onScanGallery: (() -> Unit)? = null,
     onSave: (PrenatalMedication) -> Unit
 ) {
     var name by remember { mutableStateOf(initial?.name ?: "") }
@@ -627,18 +693,36 @@ fun MedicationEditorDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = if (initial == null) "💊 Nueva Vitamina Prenatal" else "✏️ Editar Vitamina",
+                        text = if (initial == null) "💊 Nueva Vitamina" else "✏️ Editar Vitamina",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
 
-                    OutlinedButton(
-                        onClick = onScanCamera,
-                        shape = RoundedCornerShape(10.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        Text("📷 Escanear con IA", fontSize = 11.sp)
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                            modifier = Modifier.size(36.dp).bouncyPress(onClick = onScanCamera)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text("📷", fontSize = 16.sp)
+                            }
+                        }
+                        if (onScanGallery != null) {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f),
+                                modifier = Modifier.size(36.dp).bouncyPress(onClick = onScanGallery)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Text("🖼️", fontSize = 16.sp)
+                                }
+                            }
+                        }
                     }
                 }
 
