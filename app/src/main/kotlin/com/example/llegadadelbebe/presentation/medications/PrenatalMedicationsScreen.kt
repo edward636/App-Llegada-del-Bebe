@@ -113,11 +113,14 @@ fun PrenatalMedicationsScreen(
 
     val processMedicationUri: (Uri) -> Unit = { uri ->
         coroutineScope.launch {
-            val base64 = ImageCaptureHelper.uriToOptimizedBase64(context, uri)
-            if (!base64.isNullOrBlank()) {
-                viewModel.analyzeMedicationPhoto(base64, geminiApiKey) { parsed ->
+            analysisErrorMessage = ""
+            val processed = ImageCaptureHelper.processUriInBackground(context, uri)
+            if (processed != null) {
+                viewModel.analyzeMedicationPhoto(processed.highResBase64, geminiApiKey) { parsed ->
                     if (parsed != null) {
+                        val existingId = selectedMedForEdit?.id ?: "MED_${UUID.randomUUID()}"
                         val newMed = PrenatalMedication(
+                            id = existingId,
                             name = parsed.name,
                             activeIngredient = parsed.activeIngredient,
                             dose = parsed.dose,
@@ -128,7 +131,7 @@ fun PrenatalMedicationsScreen(
                             pillsRemaining = parsed.pillsInBox,
                             totalPillsInPackage = parsed.pillsInBox,
                             notes = parsed.notes,
-                            photoBase64 = base64
+                            photoBase64 = processed.thumbBase64
                         )
                         selectedMedForEdit = newMed
                         showEditorDialog = true
@@ -145,7 +148,7 @@ fun PrenatalMedicationsScreen(
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success ->
-        val uri = pendingPhotoUri
+        val uri = pendingPhotoUri ?: runCatching { ImageCaptureHelper.createCameraTempUri(context, "camera_med") }.getOrNull()
         if (success && uri != null) {
             processMedicationUri(uri)
         }
@@ -392,8 +395,14 @@ fun PrenatalMedicationsScreen(
                 showEditorDialog = false
                 selectedMedForEdit = null
             },
-            onScanCamera = launchCameraSafe,
-            onScanGallery = { galleryLauncher.launch("image/*") },
+            onScanCamera = {
+                showEditorDialog = false
+                launchCameraSafe()
+            },
+            onScanGallery = {
+                showEditorDialog = false
+                galleryLauncher.launch("image/*")
+            },
             onSave = { savedMed ->
                 viewModel.saveMedication(savedMed)
                 showEditorDialog = false
@@ -663,14 +672,14 @@ fun MedicationEditorDialog(
     onScanGallery: (() -> Unit)? = null,
     onSave: (PrenatalMedication) -> Unit
 ) {
-    var name by remember { mutableStateOf(initial?.name ?: "") }
-    var activeIngredient by remember { mutableStateOf(initial?.activeIngredient ?: "") }
-    var dose by remember { mutableStateOf(initial?.dose ?: "1 tableta") }
-    var frequencyHours by remember { mutableIntStateOf(initial?.frequencyHours ?: 24) }
-    var timeText by remember { mutableStateOf(initial?.scheduleTimes?.firstOrNull() ?: "08:00") }
-    var foodInstructions by remember { mutableStateOf(initial?.foodInstructions ?: "Con el desayuno") }
-    var clinicalWarnings by remember { mutableStateOf(initial?.clinicalWarnings ?: "") }
-    var pillsRemaining by remember { mutableIntStateOf(initial?.pillsRemaining ?: 30) }
+    var name by remember(initial) { mutableStateOf(initial?.name ?: "") }
+    var activeIngredient by remember(initial) { mutableStateOf(initial?.activeIngredient ?: "") }
+    var dose by remember(initial) { mutableStateOf(initial?.dose ?: "1 tableta") }
+    var frequencyHours by remember(initial) { mutableIntStateOf(initial?.frequencyHours ?: 24) }
+    var timeText by remember(initial) { mutableStateOf(initial?.scheduleTimes?.firstOrNull() ?: "08:00") }
+    var foodInstructions by remember(initial) { mutableStateOf(initial?.foodInstructions ?: "Con el desayuno") }
+    var clinicalWarnings by remember(initial) { mutableStateOf(initial?.clinicalWarnings ?: "") }
+    var pillsRemaining by remember(initial) { mutableIntStateOf(initial?.pillsRemaining ?: 30) }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Card(
@@ -803,7 +812,8 @@ fun MedicationEditorDialog(
                                         foodInstructions = foodInstructions.trim(),
                                         clinicalWarnings = clinicalWarnings.trim(),
                                         pillsRemaining = pillsRemaining,
-                                        totalPillsInPackage = pillsRemaining.coerceAtLeast(initial?.totalPillsInPackage ?: 30)
+                                        totalPillsInPackage = pillsRemaining.coerceAtLeast(initial?.totalPillsInPackage ?: 30),
+                                        updatedAt = System.currentTimeMillis()
                                     )
                                 )
                             }

@@ -30,9 +30,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilledIconButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -417,12 +420,12 @@ fun ConfirmGeminiProductDialog(
                                 color = Color(0xFF37474F)
                             )
                             if (onScanBackPhoto != null) {
-                                Button(
+                                FilledIconButton(
                                     onClick = { onScanBackPhoto.invoke(buildCurrentSnapshot()) },
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFF57F17))
+                                    modifier = Modifier.size(40.dp),
+                                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = Color(0xFFF57F17))
                                 ) {
-                                    Text("📷 Tomar Foto del Reverso / Ingredientes", color = Color.White, fontSize = 12.sp)
+                                    Text("📷", fontSize = 18.sp)
                                 }
                             }
                         }
@@ -601,19 +604,15 @@ fun ConfirmGeminiProductDialog(
                 ) {
                     Text("Ingredientes / Composición (INCI)", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
                     if (onScanBackPhoto != null) {
-                        Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
-                            modifier = Modifier.clickable {
+                        FilledTonalIconButton(
+                            onClick = {
                                 onScanBackPhoto.invoke(buildCurrentSnapshot())
-                            }
+                            },
+                            modifier = Modifier.size(34.dp)
                         ) {
                             Text(
-                                text = "📷 Tomar otra foto del envase",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                text = "📷",
+                                fontSize = 15.sp
                             )
                         }
                     }

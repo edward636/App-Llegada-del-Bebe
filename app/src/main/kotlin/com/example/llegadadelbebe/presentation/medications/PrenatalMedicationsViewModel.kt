@@ -104,31 +104,33 @@ class PrenatalMedicationsViewModel(
 
         _medications.value = updatedList
         localPreferences.saveMedicationsCache(updatedList)
-        syncWithCloud()
+        localPreferences.addPendingUploadMedicationId(id)
+        syncWithCloud(forceUpload = true)
     }
 
     fun saveMedication(med: PrenatalMedication) {
+        val stampedMed = med.copy(updatedAt = System.currentTimeMillis())
         val current = _medications.value.toMutableList()
-        val index = current.indexOfFirst { it.id == med.id }
+        val index = current.indexOfFirst { it.id == stampedMed.id }
         if (index >= 0) {
-            current[index] = med
+            current[index] = stampedMed
         } else {
-            current.add(0, med)
+            current.add(0, stampedMed)
         }
 
         _medications.value = current
         localPreferences.saveMedicationsCache(current)
-        localPreferences.addPendingUploadMedicationId(med.id)
-        syncWithCloud()
+        localPreferences.addPendingUploadMedicationId(stampedMed.id)
+        syncWithCloud(forceUpload = true)
 
         // Programar alarmas para los horarios configurados
-        med.scheduleTimes.forEach { time ->
+        stampedMed.scheduleTimes.forEach { time ->
             MedicationAlarmScheduler.scheduleMedicationAlarm(
                 context = getApplication(),
-                medId = med.id,
-                medName = med.name,
-                dose = med.dose,
-                instructions = med.foodInstructions,
+                medId = stampedMed.id,
+                medName = stampedMed.name,
+                dose = stampedMed.dose,
+                instructions = stampedMed.foodInstructions,
                 timeStr = time
             )
         }
@@ -144,7 +146,7 @@ class PrenatalMedicationsViewModel(
         val updated = _medications.value.filterNot { it.id == id }
         _medications.value = updated
         localPreferences.saveMedicationsCache(updated)
-        syncWithCloud()
+        syncWithCloud(forceUpload = true)
     }
 
     fun analyzeMedicationPhoto(
@@ -168,19 +170,30 @@ class PrenatalMedicationsViewModel(
         }
     }
 
-    fun syncWithCloud(sheetUrl: String = com.example.llegadadelbebe.core.security.SecureConfig.getGoogleSheetUrl()) {
+    fun syncWithCloud(
+        sheetUrl: String = com.example.llegadadelbebe.core.security.SecureConfig.getGoogleSheetUrl(),
+        forceUpload: Boolean = false
+    ) {
         if (sheetUrl.isBlank()) return
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            // Recargar caché primero por si se confirmó una dosis desde la notificación de Android
+            val freshCached = localPreferences.getMedicationsCache()
+            _medications.value = freshCached
+
             val deletedIds = localPreferences.getDeletedMedicationIds()
             val pendingUploadIds = localPreferences.getPendingUploadMedicationIds()
             val remoteResult = googleSheetsService.fetchSystemRecord(sheetUrl, GoogleSheetsService.SYS_MEDICATIONS)
-            var hasLocalChangesToUpload = pendingUploadIds.isNotEmpty()
+            var hasLocalChangesToUpload = pendingUploadIds.isNotEmpty() || forceUpload
 
             if (remoteResult.isSuccess) {
                 val remotePayload = remoteResult.getOrNull()
                 if (!remotePayload.isNullOrBlank()) {
-                    val remoteList = localPreferences.parseMedicationsJson(remotePayload).filterNot { it.id in deletedIds }
-                    val localMap = _medications.value.filterNot { it.id in deletedIds }.associateBy { it.id }.toMutableMap()
+                    val parsedRemote = localPreferences.parseMedicationsJson(remotePayload)
+                    if (parsedRemote.any { it.id in deletedIds }) {
+                        hasLocalChangesToUpload = true
+                    }
+                    val remoteList = parsedRemote.filterNot { it.id in deletedIds }
+                    val localMap = freshCached.filterNot { it.id in deletedIds }.associateBy { it.id }.toMutableMap()
                     val merged = mutableListOf<PrenatalMedication>()
 
                     for (remote in remoteList) {
@@ -226,20 +239,24 @@ class PrenatalMedicationsViewModel(
                             )
                         }
                     }
+                } else {
+                    hasLocalChangesToUpload = true
                 }
-            }
 
-            // Subir estado consolidado a la nube si hay cambios locales pendientes
-            val activeMedications = _medications.value.filterNot { it.id in deletedIds }
-            val jsonPayload = localPreferences.medicationsToJson(activeMedications)
-            val saveResult = googleSheetsService.saveSystemRecord(
-                webAppUrl = sheetUrl,
-                systemId = GoogleSheetsService.SYS_MEDICATIONS,
-                name = "Medicamentos Prenatales",
-                jsonPayload = jsonPayload
-            )
-            if (saveResult.isSuccess && saveResult.getOrNull() == true) {
-                localPreferences.clearPendingUploadMedicationIds()
+                // Subir estado consolidado a la nube solo cuando la lectura remota fue exitosa y hay cambios
+                if (hasLocalChangesToUpload) {
+                    val activeMedications = _medications.value.filterNot { it.id in deletedIds }
+                    val jsonPayload = localPreferences.medicationsToJson(activeMedications)
+                    val saveResult = googleSheetsService.saveSystemRecord(
+                        webAppUrl = sheetUrl,
+                        systemId = GoogleSheetsService.SYS_MEDICATIONS,
+                        name = "Medicamentos Prenatales",
+                        jsonPayload = jsonPayload
+                    )
+                    if (saveResult.isSuccess && saveResult.getOrNull() == true) {
+                        localPreferences.clearPendingUploadMedicationIds()
+                    }
+                }
             }
         }
     }

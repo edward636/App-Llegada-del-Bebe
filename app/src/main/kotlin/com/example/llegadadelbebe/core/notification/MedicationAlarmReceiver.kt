@@ -56,6 +56,7 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
                     pillsRemaining = updated.pillsRemaining
                     currentMeds[idx] = updated
                     localPreferences.saveMedicationsCache(currentMeds)
+                    localPreferences.addPendingUploadMedicationId(medId)
                 }
 
                 val confirmTitle = if (isMom) "🌸 ¡Excelente, Mamita Britney!" else "💙 ¡Registrado por Papá Edward!"
@@ -247,7 +248,22 @@ object MedicationAlarmScheduler {
                 )
             }
         } catch (_: SecurityException) {
-            // Manejo seguro si falta permiso exact alarm
+            // Fallback garantizado si el sistema restringe alarmas exactas (Android 14+)
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        calendar.timeInMillis,
+                        pendingIntent
+                    )
+                } else {
+                    alarmManager.set(
+                        AlarmManager.RTC_WAKEUP,
+                        calendar.timeInMillis,
+                        pendingIntent
+                    )
+                }
+            }
         }
     }
 
@@ -295,7 +311,21 @@ object MedicationAlarmScheduler {
                 )
             }
         } catch (_: SecurityException) {
-            // Manejo seguro
+            runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerMillis,
+                        pendingIntent
+                    )
+                } else {
+                    alarmManager.set(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerMillis,
+                        pendingIntent
+                    )
+                }
+            }
         }
     }
 

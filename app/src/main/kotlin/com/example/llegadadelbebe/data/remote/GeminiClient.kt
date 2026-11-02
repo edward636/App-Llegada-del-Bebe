@@ -28,13 +28,34 @@ class GeminiClient(
     private val modelChain = listOf(
         preferredModel,
         "gemini-3.6-flash",
-        "gemini-3.5-flash",
+        "gemini-3.5-flash-lite",
+        "gemini-3.1-flash-lite",
         "gemini-flash-lite-latest",
         "gemini-flash-latest"
     )
 
     private fun getUrlForModel(model: String) =
         "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent"
+
+    /**
+     * Limpia bloques Markdown (```json ... ```) y extrae de forma segura el objeto JSON principal.
+     */
+    private fun extractCleanJsonObject(rawText: String): JSONObject {
+        val trimmed = rawText.trim()
+            .removePrefix("```json")
+            .removePrefix("```JSON")
+            .removePrefix("```")
+            .removeSuffix("```")
+            .trim()
+        val firstBrace = trimmed.indexOf('{')
+        val lastBrace = trimmed.lastIndexOf('}')
+        val jsonSubstring = if (firstBrace != -1 && lastBrace > firstBrace) {
+            trimmed.substring(firstBrace, lastBrace + 1)
+        } else {
+            trimmed
+        }
+        return JSONObject(jsonSubstring)
+    }
 
     /**
      * Extrae información estructurada completa de un producto de bebé a partir de una foto en Base64.
@@ -122,14 +143,7 @@ class GeminiClient(
                 .getJSONObject(0)
                 .getString("text")
 
-            val cleanJsonText = rawTextContent
-                .trim()
-                .removePrefix("```json")
-                .removePrefix("```")
-                .removeSuffix("```")
-                .trim()
-
-            val productJson = JSONObject(cleanJsonText)
+            val productJson = extractCleanJsonObject(rawTextContent)
 
             val categoryString = productJson.optString("categoria", productJson.optString("category", "CLOTHING"))
             val resolvedCategory = runCatching {
@@ -252,8 +266,7 @@ class GeminiClient(
             val rawText = jsonResponse.getJSONArray("candidates").getJSONObject(0)
                 .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text")
 
-            val cleanJson = rawText.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
-            val extraJson = JSONObject(cleanJson)
+            val extraJson = extractCleanJsonObject(rawText)
 
             val newIngredients = extraJson.optString("ingredientes_materiales").ifBlank { existingProduct.ingredients }
             val newExpiration = extraJson.optString("fecha_vencimiento").ifBlank { existingProduct.expirationDate }
@@ -341,8 +354,7 @@ class GeminiClient(
             val rawText = jsonResponse.getJSONArray("candidates").getJSONObject(0)
                 .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getString("text")
 
-            val cleanJson = rawText.trim().removePrefix("```json").removePrefix("```").removeSuffix("```").trim()
-            val productJson = JSONObject(cleanJson)
+            val productJson = extractCleanJsonObject(rawText)
 
             val categoryString = productJson.optString("categoria", "DIAPERS")
             val resolvedCategory = runCatching {
@@ -546,7 +558,7 @@ class GeminiClient(
             val parts = content.getJSONArray("parts")
             val text = parts.getJSONObject(0).getString("text")
 
-            val json = JSONObject(text.trim())
+            val json = extractCleanJsonObject(text)
 
             val rawCategory = json.optString("categoria", "DIAPERS")
             val cat = ProductCategory.entries.find { it.name.equals(rawCategory, ignoreCase = true) }
@@ -574,15 +586,24 @@ class GeminiClient(
 
     private fun executePost(jsonPayload: String, apiKey: String): String {
         var lastException: Exception? = null
-
         val cleanKey = apiKey.trim()
-        for (model in modelChain) {
+
+        // Priorizar el último modelo saludable verificado en la sesión para respuesta instantánea (<2s)
+        val sticky = stickyWorkingModel
+        val orderedModels = if (sticky != null && sticky in modelChain) {
+            listOf(sticky) + modelChain.filterNot { it == sticky }
+        } else {
+            modelChain
+        }
+
+        for ((index, model) in orderedModels.withIndex()) {
             try {
                 val url = URL("${getUrlForModel(model)}?key=$cleanKey")
                 val connection = (url.openConnection() as HttpURLConnection).apply {
                     requestMethod = "POST"
-                    connectTimeout = 10000
-                    readTimeout = 20000
+                    connectTimeout = 6000
+                    // Failover rápido en los primeros modelos si presentan congestión temporal
+                    readTimeout = if (index < orderedModels.lastIndex) 9000 else 16000
                     doOutput = true
                     setRequestProperty("Content-Type", "application/json; charset=UTF-8")
                     setRequestProperty("x-goog-api-key", cleanKey)
@@ -606,6 +627,7 @@ class GeminiClient(
                 connection.disconnect()
 
                 if (responseCode in 200..299) {
+                    stickyWorkingModel = model
                     return response
                 } else if (responseCode in listOf(404, 429, 500, 502, 503, 504)) {
                     lastException = RuntimeException("Modelo $model con alta demanda ($responseCode)")
@@ -745,7 +767,7 @@ class GeminiClient(
             val parts = content.getJSONArray("parts")
             val text = parts.getJSONObject(0).getString("text")
 
-            val json = JSONObject(text.trim())
+            val json = extractCleanJsonObject(text)
 
             val rawTimes = json.optJSONArray("horarios_sugeridos")
             val scheduleTimes = mutableListOf<String>()
@@ -819,6 +841,11 @@ class GeminiClient(
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    companion object {
+        @Volatile
+        private var stickyWorkingModel: String? = null
     }
 }
 

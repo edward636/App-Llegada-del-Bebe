@@ -35,11 +35,14 @@ class ConsumablesAuditViewModel(
     fun toggleBagItem(itemId: String, sheetUrl: String = com.example.llegadadelbebe.core.security.SecureConfig.getGoogleSheetUrl()): Set<String> {
         val updated = localPreferences?.toggleHospitalBagItemChecked(itemId) ?: emptySet()
         _checkedBagIds.value = updated
-        syncHospitalBagWithCloud(sheetUrl)
+        syncHospitalBagWithCloud(sheetUrl, forceUpload = true)
         return updated
     }
 
-    fun syncHospitalBagWithCloud(sheetUrl: String = com.example.llegadadelbebe.core.security.SecureConfig.getGoogleSheetUrl()) {
+    fun syncHospitalBagWithCloud(
+        sheetUrl: String = com.example.llegadadelbebe.core.security.SecureConfig.getGoogleSheetUrl(),
+        forceUpload: Boolean = false
+    ) {
         if (sheetUrl.isBlank()) return
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val localUpdatedAt = localPreferences?.getHospitalBagUpdatedAt() ?: 0L
@@ -47,10 +50,10 @@ class ConsumablesAuditViewModel(
 
             if (remoteResult.isSuccess) {
                 val remotePayload = remoteResult.getOrNull()
-                if (!remotePayload.isNullOrBlank()) {
-                    var remoteUpdatedAt = 0L
-                    val remoteSet = mutableSetOf<String>()
+                var remoteUpdatedAt = 0L
+                val remoteSet = mutableSetOf<String>()
 
+                if (!remotePayload.isNullOrBlank()) {
                     // Soporte de formato estructurado con timestamp o fallback a arreglo plano
                     if (remotePayload.trim().startsWith("{")) {
                         val obj = org.json.JSONObject(remotePayload)
@@ -62,31 +65,33 @@ class ConsumablesAuditViewModel(
                         for (i in 0 until array.length()) remoteSet.add(array.getString(i))
                     }
 
-                    if (remoteUpdatedAt > localUpdatedAt) {
-                        // El otro teléfono hizo un cambio más reciente (marcar o desmarcar): adoptar su estado
+                    if (remoteUpdatedAt >= localUpdatedAt && !forceUpload) {
+                        // El otro teléfono hizo un cambio más reciente o igual: adoptar su estado sin re-subir
                         localPreferences?.saveHospitalBagCheckedIds(remoteSet)
                         localPreferences?.saveHospitalBagUpdatedAt(remoteUpdatedAt)
                         _checkedBagIds.value = remoteSet
                         return@launch
                     }
                 }
-            }
 
-            // Si el estado local es más reciente (o primera sincronización), subir el estado actual a la nube
-            val current = localPreferences?.getHospitalBagCheckedIds() ?: emptySet()
-            val array = org.json.JSONArray()
-            current.forEach { array.put(it) }
-            val payloadObj = org.json.JSONObject().apply {
-                put("updatedAt", if (localUpdatedAt > 0L) localUpdatedAt else System.currentTimeMillis())
-                put("checkedIds", array)
-            }
+                // Si el estado local es más reciente (o cambio manual), subir el estado actual a la nube
+                if (localUpdatedAt > remoteUpdatedAt || forceUpload || remotePayload.isNullOrBlank()) {
+                    val current = localPreferences?.getHospitalBagCheckedIds() ?: emptySet()
+                    val array = org.json.JSONArray()
+                    current.forEach { array.put(it) }
+                    val payloadObj = org.json.JSONObject().apply {
+                        put("updatedAt", if (localUpdatedAt > 0L) localUpdatedAt else 1000L)
+                        put("checkedIds", array)
+                    }
 
-            googleSheetsService.saveSystemRecord(
-                webAppUrl = sheetUrl,
-                systemId = com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_HOSPITAL_BAG,
-                name = "Maleta Clínica Empacada",
-                jsonPayload = payloadObj.toString()
-            )
+                    googleSheetsService.saveSystemRecord(
+                        webAppUrl = sheetUrl,
+                        systemId = com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_HOSPITAL_BAG,
+                        name = "Maleta Clínica Empacada",
+                        jsonPayload = payloadObj.toString()
+                    )
+                }
+            }
         }
     }
 

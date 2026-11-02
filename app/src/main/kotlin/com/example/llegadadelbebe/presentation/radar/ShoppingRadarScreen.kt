@@ -132,79 +132,84 @@ fun ShoppingRadarScreen(
     var pendingQuoteDraft by remember { mutableStateOf<ProductPriceQuote?>(null) }
     var radarErrorMessage by remember { mutableStateOf("") }
 
+    val processRadarUri: (Uri) -> Unit = { uri ->
+        coroutineScope.launch {
+            radarErrorMessage = ""
+            val processed = ImageCaptureHelper.processUriInBackground(context, uri)
+            if (processed != null) {
+                val barcode = BarcodeScannerHelper.scanBarcode(processed.scaledBitmap) ?: ""
+                val exifCoords = processed.exifGps
+
+                // 1. Obtener ubicación: Prioridad coordenadas EXIF de la foto, luego GPS en vivo
+                val liveLoc = StoreLocationHelper.captureCurrentStoreLocation(context, knownStores = knownStores)
+                val finalLat = exifCoords?.first ?: liveLoc.latitude
+                val finalLon = exifCoords?.second ?: liveLoc.longitude
+
+                // 2. Verificar Memoria GPS: ¿Coincide con una tienda conocida en proximidad? (ej: Mercafácil)
+                val matchedNearby = StoreLocationHelper.findNearbyKnownStore(finalLat, finalLon, knownStores)
+                val gmapsPlace = if (finalLat != 0.0 && finalLon != 0.0) {
+                    StoreLocationHelper.resolveGoogleMapsPlace(context, finalLat, finalLon)
+                } else null
+                val detectedStoreName = matchedNearby?.name ?: liveLoc.name.ifBlank { gmapsPlace?.placeName ?: "" }
+                val resolvedGmapsName = gmapsPlace?.placeName ?: liveLoc.googleMapsName
+
+                viewModel.analyzePricePhoto(processed.highResBase64, geminiApiKey) { parsed ->
+                    if (parsed != null) {
+                        val resolvedStoreName = when {
+                            detectedStoreName.isNotBlank() -> detectedStoreName
+                            parsed.storeNameHint.isNotBlank() -> parsed.storeNameHint
+                            else -> ""
+                        }
+
+                        val draft = ProductPriceQuote(
+                            productName = parsed.productName,
+                            brand = parsed.brand,
+                            category = parsed.category,
+                            stageSize = parsed.stageSize,
+                            packageCount = parsed.packageCount,
+                            unitsPerPackage = parsed.unitsPerPackage,
+                            storeName = resolvedStoreName,
+                            storeAddress = matchedNearby?.address ?: (gmapsPlace?.fullAddress ?: liveLoc.address),
+                            latitude = finalLat,
+                            longitude = finalLon,
+                            priceAmount = parsed.priceAmount,
+                            priceCurrency = if (parsed.priceCurrency == "VES") CurrencyType.VES else CurrencyType.USD,
+                            bcvRateApplied = bcvRate.rate,
+                            priceUsdEquivalent = if (parsed.priceCurrency == "VES" && bcvRate.rate > 0) parsed.priceAmount / bcvRate.rate else parsed.priceAmount,
+                            unitPriceUsd = 0.0,
+                            quotedAt = "",
+                            photoBase64 = processed.thumbBase64,
+                            notes = parsed.notes,
+                            barcode = if (parsed.barcode.isNotBlank()) parsed.barcode else barcode,
+                            googleMapsName = resolvedGmapsName
+                        )
+
+                        // Consultar Farmatodo en tiempo real
+                        viewModel.lookupFarmatodoBenchmark(
+                            barcode = draft.barcode,
+                            productName = draft.productName,
+                            brand = draft.brand
+                        ) { ftResult ->
+                            pendingQuoteDraft = draft.copy(farmatodoBenchmark = ftResult)
+                            showAddDialog = true
+                        }
+                    } else {
+                        radarErrorMessage = "No se pudieron extraer datos del hablador. Intenta con más luz o usa registro manual con ➕."
+                    }
+                }
+            } else {
+                radarErrorMessage = "No se pudo procesar la fotografía."
+            }
+        }
+    }
+
     // Lanzador de Cámara para foto de anaquel / hablador de precio con lectura EXIF GPS
     val cameraLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.TakePicture()
     ) { success: Boolean ->
-        val uri = pendingPhotoUri
+        val uri = pendingPhotoUri ?: runCatching { ImageCaptureHelper.createCameraTempUri(context, "radar_capture") }.getOrNull()
         if (success && uri != null) {
-            coroutineScope.launch {
-                val triple = runCatching { readAndCompressPhotoWithExif(context, uri) }.getOrNull()
-                if (triple != null) {
-                    val (base64, bmp, exifCoords) = triple
-                    val barcode = bmp?.let { BarcodeScannerHelper.scanBarcode(it) } ?: ""
-
-                    // 1. Obtener ubicación: Prioridad coordenadas EXIF de la foto, luego GPS en vivo
-                    val liveLoc = StoreLocationHelper.captureCurrentStoreLocation(context, knownStores = knownStores)
-                    val finalLat = exifCoords?.first ?: liveLoc.latitude
-                    val finalLon = exifCoords?.second ?: liveLoc.longitude
-
-                    // 2. Verificar Memoria GPS: ¿Coincide con una tienda conocida en proximidad? (ej: Mercafácil)
-                    val matchedNearby = StoreLocationHelper.findNearbyKnownStore(finalLat, finalLon, knownStores)
-                    val gmapsPlace = if (finalLat != 0.0 && finalLon != 0.0) {
-                        StoreLocationHelper.resolveGoogleMapsPlace(context, finalLat, finalLon)
-                    } else null
-                    val detectedStoreName = matchedNearby?.name ?: liveLoc.name.ifBlank { gmapsPlace?.placeName ?: "" }
-                    val resolvedGmapsName = gmapsPlace?.placeName ?: liveLoc.googleMapsName
-
-                    viewModel.analyzePricePhoto(base64, geminiApiKey) { parsed ->
-                        if (parsed != null) {
-                            val resolvedStoreName = when {
-                                detectedStoreName.isNotBlank() -> detectedStoreName
-                                parsed.storeNameHint.isNotBlank() -> parsed.storeNameHint
-                                else -> ""
-                            }
-
-                            val draft = ProductPriceQuote(
-                                productName = parsed.productName,
-                                brand = parsed.brand,
-                                category = parsed.category,
-                                stageSize = parsed.stageSize,
-                                packageCount = parsed.packageCount,
-                                unitsPerPackage = parsed.unitsPerPackage,
-                                storeName = resolvedStoreName,
-                                storeAddress = matchedNearby?.address ?: (gmapsPlace?.fullAddress ?: liveLoc.address),
-                                latitude = finalLat,
-                                longitude = finalLon,
-                                priceAmount = parsed.priceAmount,
-                                priceCurrency = if (parsed.priceCurrency == "VES") CurrencyType.VES else CurrencyType.USD,
-                                bcvRateApplied = bcvRate.rate,
-                                priceUsdEquivalent = if (parsed.priceCurrency == "VES" && bcvRate.rate > 0) parsed.priceAmount / bcvRate.rate else parsed.priceAmount,
-                                unitPriceUsd = 0.0,
-                                quotedAt = "",
-                                photoBase64 = base64,
-                                notes = parsed.notes,
-                                barcode = if (parsed.barcode.isNotBlank()) parsed.barcode else barcode,
-                                googleMapsName = resolvedGmapsName
-                            )
-
-                            // Consultar Farmatodo en tiempo real
-                            viewModel.lookupFarmatodoBenchmark(
-                                barcode = draft.barcode,
-                                productName = draft.productName,
-                                brand = draft.brand
-                            ) { ftResult ->
-                                pendingQuoteDraft = draft.copy(farmatodoBenchmark = ftResult)
-                                showAddDialog = true
-                            }
-                        } else {
-                            radarErrorMessage = "No se pudieron extraer datos del hablador. Intenta con más luz o usa registro manual."
-                        }
-                    }
-                } else {
-                    radarErrorMessage = "No se pudo procesar la fotografía tomada."
-                }
-            }
+            processRadarUri(uri)
         }
     }
 
@@ -228,70 +233,7 @@ fun ShoppingRadarScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            coroutineScope.launch {
-                val triple = runCatching { readAndCompressPhotoWithExif(context, uri) }.getOrNull()
-                if (triple != null) {
-                    val (base64, bmp, exifCoords) = triple
-                    val barcode = bmp?.let { BarcodeScannerHelper.scanBarcode(it) } ?: ""
-
-                    val liveLoc = StoreLocationHelper.captureCurrentStoreLocation(context, knownStores = knownStores)
-                    val finalLat = exifCoords?.first ?: liveLoc.latitude
-                    val finalLon = exifCoords?.second ?: liveLoc.longitude
-
-                    val matchedNearby = StoreLocationHelper.findNearbyKnownStore(finalLat, finalLon, knownStores)
-                    val gmapsPlace = if (finalLat != 0.0 && finalLon != 0.0) {
-                        StoreLocationHelper.resolveGoogleMapsPlace(context, finalLat, finalLon)
-                    } else null
-                    val detectedStoreName = matchedNearby?.name ?: liveLoc.name.ifBlank { gmapsPlace?.placeName ?: "" }
-                    val resolvedGmapsName = gmapsPlace?.placeName ?: liveLoc.googleMapsName
-
-                    viewModel.analyzePricePhoto(base64, geminiApiKey) { parsed ->
-                        if (parsed != null) {
-                            val resolvedStoreName = when {
-                                detectedStoreName.isNotBlank() -> detectedStoreName
-                                parsed.storeNameHint.isNotBlank() -> parsed.storeNameHint
-                                else -> ""
-                            }
-
-                            val draft = ProductPriceQuote(
-                                productName = parsed.productName,
-                                brand = parsed.brand,
-                                category = parsed.category,
-                                stageSize = parsed.stageSize,
-                                packageCount = parsed.packageCount,
-                                unitsPerPackage = parsed.unitsPerPackage,
-                                storeName = resolvedStoreName,
-                                storeAddress = matchedNearby?.address ?: (gmapsPlace?.fullAddress ?: liveLoc.address),
-                                latitude = finalLat,
-                                longitude = finalLon,
-                                priceAmount = parsed.priceAmount,
-                                priceCurrency = if (parsed.priceCurrency == "VES") CurrencyType.VES else CurrencyType.USD,
-                                bcvRateApplied = bcvRate.rate,
-                                priceUsdEquivalent = if (parsed.priceCurrency == "VES" && bcvRate.rate > 0) parsed.priceAmount / bcvRate.rate else parsed.priceAmount,
-                                unitPriceUsd = 0.0,
-                                quotedAt = "",
-                                photoBase64 = base64,
-                                notes = parsed.notes,
-                                barcode = if (parsed.barcode.isNotBlank()) parsed.barcode else barcode,
-                                googleMapsName = resolvedGmapsName
-                            )
-
-                            viewModel.lookupFarmatodoBenchmark(
-                                barcode = draft.barcode,
-                                productName = draft.productName,
-                                brand = draft.brand
-                            ) { ftResult ->
-                                pendingQuoteDraft = draft.copy(farmatodoBenchmark = ftResult)
-                                showAddDialog = true
-                            }
-                        } else {
-                            radarErrorMessage = "No se pudieron extraer datos del hablador. Intenta con más luz o usa registro manual con ➕."
-                        }
-                    }
-                } else {
-                    radarErrorMessage = "No se pudo procesar la imagen seleccionada."
-                }
-            }
+            processRadarUri(uri)
         }
     }
 
@@ -1549,19 +1491,19 @@ fun QuoteEditorDialog(
     onDismiss: () -> Unit,
     onSave: (ProductPriceQuote) -> Unit
 ) {
-    var productName by remember { mutableStateOf(draft.productName) }
-    var brand by remember { mutableStateOf(draft.brand) }
-    var category by remember { mutableStateOf(draft.category) }
-    var stageSize by remember { mutableStateOf(draft.stageSize) }
-    var packageCount by remember { mutableIntStateOf(draft.packageCount) }
-    var unitsPerPackage by remember { mutableIntStateOf(draft.unitsPerPackage) }
-    var storeName by remember { mutableStateOf(draft.storeName) }
-    var storeAddress by remember { mutableStateOf(draft.storeAddress) }
-    var priceText by remember { mutableStateOf(if (draft.priceAmount > 0) draft.priceAmount.toString() else "") }
-    var currency by remember { mutableStateOf(draft.priceCurrency) }
-    var barcode by remember { mutableStateOf(draft.barcode) }
-    var notes by remember { mutableStateOf(draft.notes) }
-    var farmatodoBenchmark by remember { mutableStateOf(draft.farmatodoBenchmark) }
+    var productName by remember(draft.id) { mutableStateOf(draft.productName) }
+    var brand by remember(draft.id) { mutableStateOf(draft.brand) }
+    var category by remember(draft.id) { mutableStateOf(draft.category) }
+    var stageSize by remember(draft.id) { mutableStateOf(draft.stageSize) }
+    var packageCount by remember(draft.id) { mutableIntStateOf(draft.packageCount) }
+    var unitsPerPackage by remember(draft.id) { mutableIntStateOf(draft.unitsPerPackage) }
+    var storeName by remember(draft.id) { mutableStateOf(draft.storeName) }
+    var storeAddress by remember(draft.id) { mutableStateOf(draft.storeAddress) }
+    var priceText by remember(draft.id) { mutableStateOf(if (draft.priceAmount > 0) draft.priceAmount.toString() else "") }
+    var currency by remember(draft.id) { mutableStateOf(draft.priceCurrency) }
+    var barcode by remember(draft.id) { mutableStateOf(draft.barcode) }
+    var notes by remember(draft.id) { mutableStateOf(draft.notes) }
+    var farmatodoBenchmark by remember(draft.farmatodoBenchmark) { mutableStateOf(draft.farmatodoBenchmark) }
 
     val parsedPrice = priceText.toDoubleOrNull() ?: 0.0
     val isMultiUnit = unitsPerPackage > 1
@@ -1930,53 +1872,4 @@ fun ManualBcvDialog(
             }
         }
     )
-}
-
-/**
- * Helper para leer la foto, corregir orientación y extraer coordenadas EXIF GPS nativas de la imagen.
- */
-private fun readAndCompressPhotoWithExif(context: Context, uri: Uri): Triple<String, Bitmap?, Pair<Double, Double>?>? {
-    return try {
-        context.contentResolver.openInputStream(uri)?.use { stream ->
-            val original = BitmapFactory.decodeStream(stream) ?: return null
-
-            var exifGps: Pair<Double, Double>? = null
-            val rotated = try {
-                context.contentResolver.openInputStream(uri)?.use { exifStream ->
-                    val exif = ExifInterface(exifStream)
-                    exifGps = StoreLocationHelper.extractGpsFromExif(exif)
-                    val orientation = exif.getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL)
-                    when (orientation) {
-                        ExifInterface.ORIENTATION_ROTATE_90 -> rotateBitmap(original, 90f)
-                        ExifInterface.ORIENTATION_ROTATE_180 -> rotateBitmap(original, 180f)
-                        ExifInterface.ORIENTATION_ROTATE_270 -> rotateBitmap(original, 270f)
-                        else -> original
-                    }
-                } ?: original
-            } catch (_: Exception) {
-                original
-            }
-
-            val maxDim = 1280
-            val width = rotated.width
-            val height = rotated.height
-            val scaled = if (width > maxDim || height > maxDim) {
-                val ratio = width.toFloat() / height.toFloat()
-                val (newW, newH) = if (ratio > 1f) maxDim to (maxDim / ratio).toInt() else (maxDim * ratio).toInt() to maxDim
-                Bitmap.createScaledBitmap(rotated, newW, newH, true)
-            } else rotated
-
-            val output = ByteArrayOutputStream()
-            scaled.compress(Bitmap.CompressFormat.JPEG, 85, output)
-            val base64 = Base64.encodeToString(output.toByteArray(), Base64.NO_WRAP)
-            Triple(base64, scaled, exifGps)
-        }
-    } catch (_: Exception) {
-        null
-    }
-}
-
-private fun rotateBitmap(bitmap: Bitmap, degrees: Float): Bitmap {
-    val matrix = Matrix().apply { postRotate(degrees) }
-    return Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
 }

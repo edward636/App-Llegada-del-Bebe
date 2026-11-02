@@ -299,7 +299,6 @@ fun ProductDetailDialog(
                                                     currentPhotoBase64 = candidateBase64
                                                     isShowingRawPhoto = false
                                                     showCandidatesRow = false
-                                                    onUpdateProduct(product.copy(photoBase64 = candidateBase64))
                                                 },
                                             contentAlignment = Alignment.Center
                                         ) {

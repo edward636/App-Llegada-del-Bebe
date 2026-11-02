@@ -96,10 +96,10 @@ function getOrCreateSheet(sheetName) {
       case SHEET_CONFIG:
         sheet.appendRow(["versionCode", "versionName", "apkUrl", "changelog", "updatedAt"]);
         sheet.appendRow([
-          24,
-          "1.6.1",
-          "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.1/app-release.apk",
-          "Actualización v1.6.1: Solución al crash de cámara/IA en Vitaminas, optimización de memoria EXIF y botones compactos de solo ícono.",
+          25,
+          "1.6.2",
+          "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.2/app-release.apk",
+          "Actualización v1.6.2: Auditoría integral, decodificación cámara 200MP en background, sincronización Two-Phone blindada y failover instantáneo Gemini.",
           new Date().toISOString()
         ]);
         sheet.getRange(1, 1, 1, 5).setFontWeight("bold").setBackground("#D8F3DC");
@@ -124,28 +124,28 @@ function doGet(e) {
     try {
       const configSheet = getOrCreateSheet(SHEET_CONFIG);
       let vCode = Number(configSheet.getRange(2, 1).getValue()) || 0;
-      if (vCode < 24) {
+      if (vCode < 25) {
         configSheet.getRange(2, 1, 1, 5).setValues([[
-          24,
-          "1.6.1",
-          "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.1/app-release.apk",
-          "Actualización v1.6.1: Solución al crash de cámara/IA en Vitaminas, optimización de memoria EXIF y botones compactos de solo ícono.",
+          25,
+          "1.6.2",
+          "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.2/app-release.apk",
+          "Actualización v1.6.2: Auditoría integral, decodificación cámara 200MP en background, sincronización Two-Phone blindada y failover instantáneo Gemini.",
           new Date().toISOString()
         ]]);
       }
       const row = configSheet.getRange(2, 1, 1, 5).getValues()[0];
       return jsonResponse({
-        latestVersionCode: Number(row[0]) || 24,
-        latestVersionName: String(row[1]) || "1.6.1",
-        apkUrl: String(row[2]) || "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.1/app-release.apk",
-        changelog: String(row[3]) || "Actualización v1.6.1 oficial disponible."
+        latestVersionCode: Number(row[0]) || 25,
+        latestVersionName: String(row[1]) || "1.6.2",
+        apkUrl: String(row[2]) || "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.2/app-release.apk",
+        changelog: String(row[3]) || "Actualización v1.6.2 oficial disponible."
       });
     } catch (err) {
       return jsonResponse({
-        latestVersionCode: 24,
-        latestVersionName: "1.6.1",
-        apkUrl: "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.1/app-release.apk",
-        changelog: "Actualización v1.6.1 oficial disponible."
+        latestVersionCode: 25,
+        latestVersionName: "1.6.2",
+        apkUrl: "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.2/app-release.apk",
+        changelog: "Actualización v1.6.2 oficial disponible."
       });
     }
   }

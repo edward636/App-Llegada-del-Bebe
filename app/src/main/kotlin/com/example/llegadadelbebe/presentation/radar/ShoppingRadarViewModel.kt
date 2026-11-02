@@ -196,14 +196,15 @@ class ShoppingRadarViewModel(
 
         localPreferences.saveKnownStoreLocation(store)
         _knownStores.value = localPreferences.getKnownStoreLocations()
-        syncStoresWithCloud()
+        syncStoresWithCloud(forceUpload = true)
     }
 
     fun deleteKnownStore(id: String) {
+        localPreferences.recordDeletedStoreId(id)
         val updated = _knownStores.value.filterNot { it.id == id }
         _knownStores.value = updated
         localPreferences.saveAllKnownStores(updated)
-        syncStoresWithCloud()
+        syncStoresWithCloud(forceUpload = true)
     }
 
     fun savePriceQuote(
@@ -280,7 +281,7 @@ class ShoppingRadarViewModel(
         _quotes.value = updatedList
         localPreferences.saveRadarQuotesCache(updatedList)
         localPreferences.addPendingUploadQuoteId(newQuote.id)
-        syncQuotesWithCloud()
+        syncQuotesWithCloud(forceUpload = true)
     }
 
     fun deletePriceQuote(id: String) {
@@ -289,7 +290,7 @@ class ShoppingRadarViewModel(
         val updated = _quotes.value.filterNot { it.id == id }
         _quotes.value = updated
         localPreferences.saveRadarQuotesCache(updated)
-        syncQuotesWithCloud()
+        syncQuotesWithCloud(forceUpload = true)
     }
 
     fun analyzePricePhoto(
@@ -535,18 +536,25 @@ class ShoppingRadarViewModel(
         return farmatodoClient.lookupBenchmark(barcode, query, "", currentRate)
     }
 
-    fun syncQuotesWithCloud(sheetUrl: String = com.example.llegadadelbebe.core.security.SecureConfig.getGoogleSheetUrl()) {
+    fun syncQuotesWithCloud(
+        sheetUrl: String = com.example.llegadadelbebe.core.security.SecureConfig.getGoogleSheetUrl(),
+        forceUpload: Boolean = false
+    ) {
         if (sheetUrl.isBlank()) return
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             val deletedQuoteIds = localPreferences.getDeletedQuoteIds()
             val pendingUploadIds = localPreferences.getPendingUploadQuoteIds()
             val remoteResult = googleSheetsService.fetchSystemRecord(sheetUrl, com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_RADAR_QUOTES)
-            var hasLocalChanges = pendingUploadIds.isNotEmpty()
+            var hasLocalChanges = pendingUploadIds.isNotEmpty() || forceUpload
 
             if (remoteResult.isSuccess) {
                 val remotePayload = remoteResult.getOrNull()
                 if (!remotePayload.isNullOrBlank()) {
-                    val remoteQuotes = localPreferences.parseQuotesJson(remotePayload).filterNot { it.id in deletedQuoteIds }
+                    val parsedRemote = localPreferences.parseQuotesJson(remotePayload)
+                    if (parsedRemote.any { it.id in deletedQuoteIds }) {
+                        hasLocalChanges = true
+                    }
+                    val remoteQuotes = parsedRemote.filterNot { it.id in deletedQuoteIds }
                     val currentMap = _quotes.value.filterNot { it.id in deletedQuoteIds }.associateBy { it.id }.toMutableMap()
                     val merged = mutableListOf<ProductPriceQuote>()
 
@@ -566,20 +574,24 @@ class ShoppingRadarViewModel(
                     val sorted = merged.sortedByDescending { it.quotedAt }
                     _quotes.value = sorted
                     localPreferences.saveRadarQuotesCache(sorted)
+                } else if (_quotes.value.isNotEmpty()) {
+                    hasLocalChanges = true
                 }
-            }
 
-            // Subir cotizaciones unificadas a la nube si hay cambios locales
-            val activeQuotes = _quotes.value.filterNot { it.id in deletedQuoteIds }
-            val jsonPayload = localPreferences.quotesToJson(activeQuotes)
-            val saveResult = googleSheetsService.saveSystemRecord(
-                webAppUrl = sheetUrl,
-                systemId = com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_RADAR_QUOTES,
-                name = "Cotizaciones de Precios",
-                jsonPayload = jsonPayload
-            )
-            if (saveResult.isSuccess && saveResult.getOrNull() == true) {
-                localPreferences.clearPendingUploadQuoteIds()
+                // Subir cotizaciones unificadas a la nube solo si la lectura fue exitosa y hay cambios locales
+                if (hasLocalChanges) {
+                    val activeQuotes = _quotes.value.filterNot { it.id in deletedQuoteIds }
+                    val jsonPayload = localPreferences.quotesToJson(activeQuotes)
+                    val saveResult = googleSheetsService.saveSystemRecord(
+                        webAppUrl = sheetUrl,
+                        systemId = com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_RADAR_QUOTES,
+                        name = "Cotizaciones de Precios",
+                        jsonPayload = jsonPayload
+                    )
+                    if (saveResult.isSuccess && saveResult.getOrNull() == true) {
+                        localPreferences.clearPendingUploadQuoteIds()
+                    }
+                }
             }
         }
     }
@@ -587,15 +599,32 @@ class ShoppingRadarViewModel(
     /**
      * Sincroniza la memoria de Comercios y Farmacias GPS entre los teléfonos de Edward y Britney.
      */
-    fun syncStoresWithCloud(sheetUrl: String = com.example.llegadadelbebe.core.security.SecureConfig.getGoogleSheetUrl()) {
+    fun syncStoresWithCloud(
+        sheetUrl: String = com.example.llegadadelbebe.core.security.SecureConfig.getGoogleSheetUrl(),
+        forceUpload: Boolean = false
+    ) {
         if (sheetUrl.isBlank()) return
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val deletedStoreIds = localPreferences.getDeletedStoreIds()
             val remoteResult = googleSheetsService.fetchSystemRecord(sheetUrl, com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_KNOWN_STORES)
+            var hasChangesToUpload = forceUpload
+
             if (remoteResult.isSuccess) {
                 val remotePayload = remoteResult.getOrNull()
                 if (!remotePayload.isNullOrBlank()) {
-                    val remoteStores = localPreferences.parseKnownStoresJson(remotePayload)
-                    val localStores = localPreferences.getKnownStoreLocations().associateBy { it.id }.toMutableMap()
+                    val parsedRemote = localPreferences.parseKnownStoresJson(remotePayload)
+                    if (parsedRemote.any { it.id in deletedStoreIds }) {
+                        hasChangesToUpload = true
+                    }
+                    val remoteStores = parsedRemote.filterNot { it.id in deletedStoreIds }
+                    val localStores = localPreferences.getKnownStoreLocations()
+                        .filterNot { it.id in deletedStoreIds }
+                        .associateBy { it.id }
+                        .toMutableMap()
+                    val remoteIds = remoteStores.map { it.id }.toSet()
+                    if (localStores.keys.any { it !in remoteIds }) {
+                        hasChangesToUpload = true
+                    }
                     for (rs in remoteStores) {
                         val existing = localStores[rs.id]
                         if (existing == null) {
@@ -609,19 +638,21 @@ class ShoppingRadarViewModel(
                     val merged = localStores.values.toList()
                     localPreferences.saveAllKnownStores(merged)
                     _knownStores.value = merged
+                } else if (localPreferences.getKnownStoreLocations().isNotEmpty()) {
+                    hasChangesToUpload = true
                 }
-            }
 
-            // Subir el consolidado a la nube para que ambos teléfonos compartan los comercios
-            val currentStores = localPreferences.getKnownStoreLocations()
-            if (currentStores.isNotEmpty()) {
-                val jsonPayload = localPreferences.knownStoresToJson(currentStores)
-                googleSheetsService.saveSystemRecord(
-                    webAppUrl = sheetUrl,
-                    systemId = com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_KNOWN_STORES,
-                    name = "Comercios y Farmacias GPS",
-                    jsonPayload = jsonPayload
-                )
+                // Subir el consolidado a la nube cuando existan cambios o eliminaciones
+                if (hasChangesToUpload) {
+                    val currentStores = localPreferences.getKnownStoreLocations().filterNot { it.id in deletedStoreIds }
+                    val jsonPayload = localPreferences.knownStoresToJson(currentStores)
+                    googleSheetsService.saveSystemRecord(
+                        webAppUrl = sheetUrl,
+                        systemId = com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_KNOWN_STORES,
+                        name = "Comercios y Farmacias GPS",
+                        jsonPayload = jsonPayload
+                    )
+                }
             }
         }
     }

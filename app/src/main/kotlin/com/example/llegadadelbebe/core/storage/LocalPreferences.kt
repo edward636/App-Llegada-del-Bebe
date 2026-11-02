@@ -86,6 +86,7 @@ class LocalPreferences(context: Context) {
                     if (item.referencePriceSource.isNotBlank()) {
                         put("referencePriceSource", item.referencePriceSource)
                     }
+                    put("updatedAt", item.updatedAt)
                 }
                 array.put(obj)
             }
@@ -98,6 +99,7 @@ class LocalPreferences(context: Context) {
     fun getInventoryCache(): List<BabyProduct>? {
         val raw = prefs.getString(KEY_INVENTORY_CACHE, null) ?: return null
         return try {
+            val deletedIds = getDeletedProductIds()
             val array = JSONArray(raw)
             val list = mutableListOf<BabyProduct>()
             for (i in 0 until array.length()) {
@@ -137,11 +139,12 @@ class LocalPreferences(context: Context) {
                         referencePriceUsd = if (obj.has("referencePriceUsd") && !obj.isNull("referencePriceUsd")) {
                             obj.optDouble("referencePriceUsd", 0.0).takeIf { it > 0.0 }
                         } else null,
-                        referencePriceSource = obj.optString("referencePriceSource", "")
+                        referencePriceSource = obj.optString("referencePriceSource", ""),
+                        updatedAt = obj.optLong("updatedAt", 1000L)
                     )
                 )
             }
-            if (list.isEmpty()) null else list
+            list.filterNot { it.id in deletedIds }
         } catch (_: Exception) {
             null
         }
@@ -392,7 +395,18 @@ class LocalPreferences(context: Context) {
 
     fun getKnownStoreLocations(): List<com.example.llegadadelbebe.domain.model.KnownStoreLocation> {
         val raw = prefs.getString(KEY_KNOWN_STORES_CACHE, null) ?: return emptyList()
-        return parseKnownStoresJson(raw)
+        val deletedIds = getDeletedStoreIds()
+        return parseKnownStoresJson(raw).filterNot { it.id in deletedIds }
+    }
+
+    fun getDeletedStoreIds(): Set<String> {
+        return prefs.getStringSet(KEY_DELETED_STORE_IDS, emptySet()) ?: emptySet()
+    }
+
+    fun recordDeletedStoreId(id: String) {
+        val current = getDeletedStoreIds().toMutableSet()
+        current.add(id)
+        prefs.edit().putStringSet(KEY_DELETED_STORE_IDS, current).apply()
     }
 
     fun saveAllKnownStores(stores: List<com.example.llegadadelbebe.domain.model.KnownStoreLocation>) {
@@ -550,7 +564,8 @@ class LocalPreferences(context: Context) {
                 foodInstructions = "En ayunas o con el desayuno con abundante agua",
                 clinicalWarnings = "Fundamental para el cierre del tubo neural y desarrollo del bebé",
                 pillsRemaining = 30,
-                totalPillsInPackage = 30
+                totalPillsInPackage = 30,
+                updatedAt = 1000L
             ),
             com.example.llegadadelbebe.domain.model.PrenatalMedication(
                 id = "MED_DEFAULT_IRON",
@@ -562,7 +577,8 @@ class LocalPreferences(context: Context) {
                 foodInstructions = "Con el almuerzo o jugo de naranja cítrico para máxima absorción",
                 clinicalWarnings = "⚠️ NO tomar junto al Calcio o leche (separar al menos 2 horas)",
                 pillsRemaining = 30,
-                totalPillsInPackage = 30
+                totalPillsInPackage = 30,
+                updatedAt = 1000L
             ),
             com.example.llegadadelbebe.domain.model.PrenatalMedication(
                 id = "MED_DEFAULT_CALCIUM",
@@ -574,7 +590,8 @@ class LocalPreferences(context: Context) {
                 foodInstructions = "En la cena",
                 clinicalWarnings = "Separar del hierro por al menos 2 horas para evitar interferencia",
                 pillsRemaining = 30,
-                totalPillsInPackage = 30
+                totalPillsInPackage = 30,
+                updatedAt = 1000L
             )
         )
     }
@@ -709,6 +726,7 @@ class LocalPreferences(context: Context) {
         private const val KEY_LAST_APP_OPEN_MILLIS = "last_app_open_millis"
         private const val KEY_LAST_ENGAGEMENT_NOTIF_EPOCH_DAY = "last_engagement_notif_epoch_day"
         private const val KEY_DELETED_PRODUCT_IDS = "deleted_product_ids"
+        private const val KEY_DELETED_STORE_IDS = "deleted_store_ids_v1"
         private const val KEY_THEME_MODE = "app_theme_mode"
     }
 }
