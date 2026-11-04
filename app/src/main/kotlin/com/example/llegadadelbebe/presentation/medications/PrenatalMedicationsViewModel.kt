@@ -4,7 +4,10 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.llegadadelbebe.core.notification.MedicationAlarmScheduler
+import com.example.llegadadelbebe.core.notification.NotificationHelper
 import com.example.llegadadelbebe.core.storage.LocalPreferences
+import com.example.llegadadelbebe.core.util.MedicationConflict
+import com.example.llegadadelbebe.core.util.MedicationConflictHelper
 import com.example.llegadadelbebe.data.remote.GeminiClient
 import com.example.llegadadelbebe.data.remote.GoogleSheetsService
 import com.example.llegadadelbebe.data.remote.ParsedMedicationInfo
@@ -35,6 +38,9 @@ class PrenatalMedicationsViewModel(
     private val _isAnalyzingPhoto = MutableStateFlow(false)
     val isAnalyzingPhoto: StateFlow<Boolean> = _isAnalyzingPhoto.asStateFlow()
 
+    private val _isSyncing = MutableStateFlow(false)
+    val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
+
     private val _activeUser = MutableStateFlow(localPreferences.getActiveUser())
     val activeUser: StateFlow<String> = _activeUser.asStateFlow()
 
@@ -44,7 +50,16 @@ class PrenatalMedicationsViewModel(
 
     fun refreshMedications() {
         loadMedications()
+        syncWithCloud()
     }
+
+    val scheduleConflicts: StateFlow<List<MedicationConflict>> = _medications.map { list ->
+        MedicationConflictHelper.evaluateAllConflicts(list)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        emptyList()
+    )
 
     val adherenceSummary: StateFlow<MedicationAdherenceSummary> = _medications.map { list ->
         val total = list.size
@@ -176,87 +191,117 @@ class PrenatalMedicationsViewModel(
     ) {
         if (sheetUrl.isBlank()) return
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            // Recargar caché primero por si se confirmó una dosis desde la notificación de Android
-            val freshCached = localPreferences.getMedicationsCache()
-            _medications.value = freshCached
+            _isSyncing.value = true
+            try {
+                // Recargar caché primero por si se confirmó una dosis desde la notificación de Android
+                val freshCached = localPreferences.getMedicationsCache()
+                _medications.value = freshCached
 
-            val deletedIds = localPreferences.getDeletedMedicationIds()
-            val pendingUploadIds = localPreferences.getPendingUploadMedicationIds()
-            val remoteResult = googleSheetsService.fetchSystemRecord(sheetUrl, GoogleSheetsService.SYS_MEDICATIONS)
-            var hasLocalChangesToUpload = pendingUploadIds.isNotEmpty() || forceUpload
+                val deletedIds = localPreferences.getDeletedMedicationIds()
+                val pendingUploadIds = localPreferences.getPendingUploadMedicationIds()
+                val isDad = activeUser.value.contains("Papá", ignoreCase = true)
+                val todayStr = LocalDate.now().toString()
 
-            if (remoteResult.isSuccess) {
-                val remotePayload = remoteResult.getOrNull()
-                if (!remotePayload.isNullOrBlank()) {
-                    val parsedRemote = localPreferences.parseMedicationsJson(remotePayload)
-                    if (parsedRemote.any { it.id in deletedIds }) {
-                        hasLocalChangesToUpload = true
-                    }
-                    val remoteList = parsedRemote.filterNot { it.id in deletedIds }
-                    val localMap = freshCached.filterNot { it.id in deletedIds }.associateBy { it.id }.toMutableMap()
-                    val merged = mutableListOf<PrenatalMedication>()
+                val remoteResult = googleSheetsService.fetchSystemRecord(sheetUrl, GoogleSheetsService.SYS_MEDICATIONS)
+                var hasLocalChangesToUpload = pendingUploadIds.isNotEmpty() || forceUpload
 
-                    for (remote in remoteList) {
-                        val local = localMap.remove(remote.id)
-                        if (local == null) {
-                            merged.add(remote)
-                        } else {
-                            if (local.updatedAt > remote.updatedAt) {
-                                merged.add(local)
+                if (remoteResult.isSuccess) {
+                    val remotePayload = remoteResult.getOrNull()
+                    if (!remotePayload.isNullOrBlank()) {
+                        val parsedRemote = localPreferences.parseMedicationsJson(remotePayload)
+                        if (parsedRemote.any { it.id in deletedIds }) {
+                            hasLocalChangesToUpload = true
+                        }
+                        val remoteList = parsedRemote.filterNot { it.id in deletedIds }
+                        val localMap = freshCached.filterNot { it.id in deletedIds }.associateBy { it.id }.toMutableMap()
+                        val merged = mutableListOf<PrenatalMedication>()
+
+                        for (remote in remoteList) {
+                            val local = localMap.remove(remote.id)
+                            if (local == null) {
+                                merged.add(remote)
+                            } else {
+                                if (local.updatedAt > remote.updatedAt) {
+                                    merged.add(local)
+                                    hasLocalChangesToUpload = true
+                                } else {
+                                    merged.add(remote)
+                                }
+                            }
+
+                            // Si es el teléfono del Papá, avisarle proactivamente cuando Mamá se tomó la vitamina
+                            if (isDad && remote.lastTakenDate == todayStr && remote.lastConfirmedBy.contains("Mamá", ignoreCase = true)) {
+                                if (!localPreferences.isDadNotifiedForDose(remote.id, remote.lastTakenDate, remote.lastTakenTime)) {
+                                    NotificationHelper.showDadMedicationNotification(
+                                        context = getApplication(),
+                                        medName = remote.name,
+                                        dose = remote.dose,
+                                        takenTime = remote.lastTakenTime,
+                                        pillsRemaining = remote.pillsRemaining
+                                    )
+                                    localPreferences.markDadNotifiedForDose(remote.id, remote.lastTakenDate, remote.lastTakenTime)
+
+                                    // Cancelar alarmas pendientes del papá para no recordarle innecesariamente
+                                    remote.scheduleTimes.forEach { time ->
+                                        MedicationAlarmScheduler.cancelMedicationAlarm(getApplication(), remote.id, time)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Solo conservar los creados offline en este teléfono que aún no se hayan subido
+                        for ((_, localOnly) in localMap) {
+                            if (localOnly.id in pendingUploadIds && localOnly.id !in deletedIds) {
+                                merged.add(localOnly)
                                 hasLocalChangesToUpload = true
                             } else {
-                                merged.add(remote)
+                                // Eliminado remotamente por el otro teléfono: cancelar sus alarmas
+                                localOnly.scheduleTimes.forEach { time ->
+                                    MedicationAlarmScheduler.cancelMedicationAlarm(getApplication(), localOnly.id, time)
+                                }
                             }
                         }
-                    }
 
-                    // Solo conservar los creados offline en este teléfono que aún no se hayan subido
-                    for ((_, localOnly) in localMap) {
-                        if (localOnly.id in pendingUploadIds && localOnly.id !in deletedIds) {
-                            merged.add(localOnly)
-                            hasLocalChangesToUpload = true
-                        } else {
-                            // Eliminado remotamente por el otro teléfono: cancelar sus alarmas
-                            localOnly.scheduleTimes.forEach { time ->
-                                MedicationAlarmScheduler.cancelMedicationAlarm(getApplication(), localOnly.id, time)
+                        _medications.value = merged
+                        localPreferences.saveMedicationsCache(merged)
+
+                        // Reconciliar alarmas para todas las vitaminas activas
+                        merged.forEach { med ->
+                            // Si ya fue tomada hoy, no activar alarma
+                            if (!med.isTakenToday) {
+                                med.scheduleTimes.forEach { time ->
+                                    MedicationAlarmScheduler.scheduleMedicationAlarm(
+                                        context = getApplication(),
+                                        medId = med.id,
+                                        medName = med.name,
+                                        dose = med.dose,
+                                        instructions = med.foodInstructions,
+                                        timeStr = time
+                                    )
+                                }
                             }
                         }
+                    } else {
+                        hasLocalChangesToUpload = true
                     }
 
-                    _medications.value = merged
-                    localPreferences.saveMedicationsCache(merged)
-
-                    // Reconciliar alarmas para todas las vitaminas activas
-                    merged.forEach { med ->
-                        med.scheduleTimes.forEach { time ->
-                            MedicationAlarmScheduler.scheduleMedicationAlarm(
-                                context = getApplication(),
-                                medId = med.id,
-                                medName = med.name,
-                                dose = med.dose,
-                                instructions = med.foodInstructions,
-                                timeStr = time
-                            )
+                    // Subir estado consolidado a la nube solo cuando la lectura remota fue exitosa y hay cambios
+                    if (hasLocalChangesToUpload) {
+                        val activeMedications = _medications.value.filterNot { it.id in deletedIds }
+                        val jsonPayload = localPreferences.medicationsToJson(activeMedications)
+                        val saveResult = googleSheetsService.saveSystemRecord(
+                            webAppUrl = sheetUrl,
+                            systemId = GoogleSheetsService.SYS_MEDICATIONS,
+                            name = "Medicamentos Prenatales",
+                            jsonPayload = jsonPayload
+                        )
+                        if (saveResult.isSuccess && saveResult.getOrNull() == true) {
+                            localPreferences.clearPendingUploadMedicationIds()
                         }
                     }
-                } else {
-                    hasLocalChangesToUpload = true
                 }
-
-                // Subir estado consolidado a la nube solo cuando la lectura remota fue exitosa y hay cambios
-                if (hasLocalChangesToUpload) {
-                    val activeMedications = _medications.value.filterNot { it.id in deletedIds }
-                    val jsonPayload = localPreferences.medicationsToJson(activeMedications)
-                    val saveResult = googleSheetsService.saveSystemRecord(
-                        webAppUrl = sheetUrl,
-                        systemId = GoogleSheetsService.SYS_MEDICATIONS,
-                        name = "Medicamentos Prenatales",
-                        jsonPayload = jsonPayload
-                    )
-                    if (saveResult.isSuccess && saveResult.getOrNull() == true) {
-                        localPreferences.clearPendingUploadMedicationIds()
-                    }
-                }
+            } finally {
+                _isSyncing.value = false
             }
         }
     }

@@ -38,6 +38,7 @@ import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import com.example.llegadadelbebe.core.notification.AppEngagementScheduler
+import com.example.llegadadelbebe.core.notification.MedicationSyncScheduler
 import com.example.llegadadelbebe.core.notification.NotificationHelper
 import com.example.llegadadelbebe.core.security.SecureConfig
 import com.example.llegadadelbebe.core.storage.LocalPreferences
@@ -126,6 +127,7 @@ fun MainNavigation(
         // Registrar apertura y programar chequeo de inactividad
         localPreferences.recordAppOpen()
         AppEngagementScheduler.scheduleNextCheck(context)
+        MedicationSyncScheduler.scheduleNextSync(context)
 
         // Solicitar permiso de notificaciones en Android 13+ si no está concedido
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

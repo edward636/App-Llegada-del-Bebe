@@ -81,7 +81,9 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.llegadadelbebe.core.ui.bouncyPress
+import com.example.llegadadelbebe.core.util.ConflictSeverity
 import com.example.llegadadelbebe.core.util.ImageCaptureHelper
+import com.example.llegadadelbebe.core.util.MedicationConflictHelper
 import com.example.llegadadelbebe.domain.model.MedicationAdherenceSummary
 import com.example.llegadadelbebe.domain.model.PrenatalMedication
 import kotlinx.coroutines.launch
@@ -99,10 +101,17 @@ fun PrenatalMedicationsScreen(
     val medications by viewModel.medications.collectAsStateWithLifecycle()
     val adherence by viewModel.adherenceSummary.collectAsStateWithLifecycle()
     val isAnalyzing by viewModel.isAnalyzingPhoto.collectAsStateWithLifecycle()
+    val isSyncing by viewModel.isSyncing.collectAsStateWithLifecycle()
+    val scheduleConflicts by viewModel.scheduleConflicts.collectAsStateWithLifecycle()
     val activeUser by viewModel.activeUser.collectAsStateWithLifecycle()
 
+    // Sincronización proactiva en vivo: consulta la nube al entrar y cada 20 segundos
     LaunchedEffect(Unit) {
         viewModel.refreshMedications()
+        while (true) {
+            kotlinx.coroutines.delay(20000)
+            viewModel.syncWithCloud()
+        }
     }
 
     val coroutineScope = rememberCoroutineScope()
@@ -226,17 +235,33 @@ fun PrenatalMedicationsScreen(
                     )
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        text = if (activeUser.contains("Mamá", ignoreCase = true)) "🌸 Mamá" else "💙 Papá",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    IconButton(
+                        onClick = { viewModel.syncWithCloud(forceUpload = true) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        } else {
+                            Text("🔄", fontSize = 16.sp)
+                        }
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                    ) {
+                        Text(
+                            text = if (activeUser.contains("Mamá", ignoreCase = true)) "🌸 Mamá" else "💙 Papá",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
 
@@ -244,6 +269,41 @@ fun PrenatalMedicationsScreen(
 
             // Tarjeta Hero con Micro-animación de Adherencia
             AdherenceHeroCard(adherence = adherence)
+
+            // Banner Clínico de Advertencia de Horarios e Interacciones Médicas
+            if (scheduleConflicts.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+                    border = BorderStroke(1.5.dp, Color(0xFFFFB74D))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("⚠️", fontSize = 18.sp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Advertencia de Espaciado en Horarios (${scheduleConflicts.size})",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.sp,
+                                color = Color(0xFFE65100)
+                            )
+                        }
+                        scheduleConflicts.forEach { conflict ->
+                            Text(
+                                text = "• ${conflict.description}",
+                                fontSize = 11.sp,
+                                color = Color(0xFFBF360C),
+                                lineHeight = 15.sp
+                            )
+                        }
+                    }
+                }
+            }
 
             if (isAnalyzing) {
                 Spacer(modifier = Modifier.height(8.dp))
@@ -391,6 +451,7 @@ fun PrenatalMedicationsScreen(
     if (showEditorDialog) {
         MedicationEditorDialog(
             initial = selectedMedForEdit,
+            otherMedications = medications,
             onDismiss = {
                 showEditorDialog = false
                 selectedMedForEdit = null
@@ -667,6 +728,7 @@ fun MedicationCard(
 @Composable
 fun MedicationEditorDialog(
     initial: PrenatalMedication?,
+    otherMedications: List<PrenatalMedication> = emptyList(),
     onDismiss: () -> Unit,
     onScanCamera: () -> Unit,
     onScanGallery: (() -> Unit)? = null,
@@ -680,6 +742,19 @@ fun MedicationEditorDialog(
     var foodInstructions by remember(initial) { mutableStateOf(initial?.foodInstructions ?: "Con el desayuno") }
     var clinicalWarnings by remember(initial) { mutableStateOf(initial?.clinicalWarnings ?: "") }
     var pillsRemaining by remember(initial) { mutableIntStateOf(initial?.pillsRemaining ?: 30) }
+
+    val candidateMed = remember(initial?.id, name, activeIngredient, clinicalWarnings) {
+        PrenatalMedication(
+            id = initial?.id ?: "candidate_med",
+            name = name,
+            activeIngredient = activeIngredient,
+            clinicalWarnings = clinicalWarnings
+        )
+    }
+
+    val activeConflicts = remember(candidateMed, timeText, otherMedications) {
+        MedicationConflictHelper.evaluateCandidateConflict(candidateMed, timeText, otherMedications)
+    }
 
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Card(
@@ -766,6 +841,39 @@ fun MedicationEditorDialog(
                         leadingEmoji = "⏰",
                         modifier = Modifier.weight(1f)
                     )
+                }
+
+                // Alerta interactiva de conflicto horario y farmacológico en vivo
+                if (activeConflicts.isNotEmpty()) {
+                    activeConflicts.forEach { conflict ->
+                        val (bgColor, bdrColor, txtColor) = when (conflict.severity) {
+                            ConflictSeverity.WARNING -> Triple(Color(0xFFFFEBEE), Color(0xFFEF5350), Color(0xFFC62828))
+                            ConflictSeverity.CAUTION -> Triple(Color(0xFFFFF8E1), Color(0xFFFFB74D), Color(0xFFE65100))
+                            ConflictSeverity.INFO -> Triple(Color(0xFFE3F2FD), Color(0xFF90CAF9), Color(0xFF0D47A1))
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = bgColor,
+                            border = BorderStroke(1.dp, bdrColor),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(
+                                    text = conflict.title,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = txtColor
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = conflict.description,
+                                    fontSize = 11.sp,
+                                    color = txtColor.copy(alpha = 0.95f),
+                                    lineHeight = 14.sp
+                                )
+                            }
+                        }
+                    }
                 }
 
                 com.example.llegadadelbebe.core.ui.BabyTextField(

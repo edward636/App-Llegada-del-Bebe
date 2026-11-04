@@ -696,6 +696,39 @@ class LocalPreferences(context: Context) {
         prefs.edit().putString(KEY_THEME_MODE, mode).apply()
     }
 
+    // --- Notificaciones al Papá cuando Mamá toma vitaminas ---
+    fun isDadNotifiedForDose(medId: String, dateStr: String, timeStr: String): Boolean {
+        val key = "${KEY_NOTIFIED_DAD_DOSES}_${dateStr}"
+        val notifiedSet = prefs.getStringSet(key, emptySet()) ?: emptySet()
+        return notifiedSet.contains("${medId}_${timeStr}")
+    }
+
+    fun markDadNotifiedForDose(medId: String, dateStr: String, timeStr: String) {
+        val key = "${KEY_NOTIFIED_DAD_DOSES}_${dateStr}"
+        val current = (prefs.getStringSet(key, emptySet()) ?: emptySet()).toMutableSet()
+        current.add("${medId}_${timeStr}")
+        prefs.edit().putStringSet(key, current).apply()
+    }
+
+    // --- Niveles de Escalado de Recordatorios Persistentes ---
+    fun getMedicationAttemptCount(medId: String, dateStr: String): Int {
+        val key = "${KEY_MED_ATTEMPT_PREFIX}${medId}_${dateStr}"
+        return prefs.getInt(key, 1)
+    }
+
+    fun incrementMedicationAttemptCount(medId: String, dateStr: String): Int {
+        val current = getMedicationAttemptCount(medId, dateStr)
+        val next = current + 1
+        val key = "${KEY_MED_ATTEMPT_PREFIX}${medId}_${dateStr}"
+        prefs.edit().putInt(key, next).apply()
+        return next
+    }
+
+    fun resetMedicationAttemptCount(medId: String, dateStr: String) {
+        val key = "${KEY_MED_ATTEMPT_PREFIX}${medId}_${dateStr}"
+        prefs.edit().remove(key).apply()
+    }
+
     companion object {
         val DEFAULT_LMP_DATE: LocalDate = LocalDate.of(2026, 6, 5) // FUR oficial 05/06/2026 (Edward & Britney)
         private const val PREFS_NAME = "llegada_del_bebe_prefs"
@@ -727,6 +760,8 @@ class LocalPreferences(context: Context) {
         private const val KEY_LAST_ENGAGEMENT_NOTIF_EPOCH_DAY = "last_engagement_notif_epoch_day"
         private const val KEY_DELETED_PRODUCT_IDS = "deleted_product_ids"
         private const val KEY_DELETED_STORE_IDS = "deleted_store_ids_v1"
+        private const val KEY_NOTIFIED_DAD_DOSES = "notified_dad_doses_v1"
+        private const val KEY_MED_ATTEMPT_PREFIX = "med_attempt_"
         private const val KEY_THEME_MODE = "app_theme_mode"
     }
 }

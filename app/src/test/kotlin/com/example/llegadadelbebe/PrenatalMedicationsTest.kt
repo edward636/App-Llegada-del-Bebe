@@ -1,5 +1,7 @@
 package com.example.llegadadelbebe
 
+import com.example.llegadadelbebe.core.util.ConflictSeverity
+import com.example.llegadadelbebe.core.util.MedicationConflictHelper
 import com.example.llegadadelbebe.domain.model.MedicationAdherenceSummary
 import com.example.llegadadelbebe.domain.model.PrenatalMedication
 import org.junit.Assert.assertEquals
@@ -90,16 +92,72 @@ class PrenatalMedicationsTest {
     @Test
     fun testClinicalInteraction_IronAndCalciumConflictDetection() {
         val medIron = PrenatalMedication(
-            name = "Sulfato Ferroso",
+            name = "Ferganic forte",
+            activeIngredient = "ácido fólico + hierro",
+            scheduleTimes = listOf("10:00")
+        )
+        // Calcio a las 11:00 (diferencia de 60 minutos < 120 minutos) -> Conflicto WARNING
+        val medCalciumNear = PrenatalMedication(
+            name = "Calcibon Natal",
+            scheduleTimes = listOf("11:00")
+        )
+
+        val conflictsNear = MedicationConflictHelper.evaluateAllConflicts(listOf(medIron, medCalciumNear))
+        assertEquals(1, conflictsNear.size)
+        assertEquals(ConflictSeverity.WARNING, conflictsNear[0].severity)
+        assertTrue(conflictsNear[0].title.contains("Calcio y Hierro"))
+        assertEquals(60, conflictsNear[0].differenceMinutes)
+
+        // Si se separan por 2 horas (ej: Calcio a las 13:00 y Hierro a las 10:00 -> 180 min) -> Sin conflicto
+        val medCalciumSafe = PrenatalMedication(
+            name = "Calcibon Natal",
+            scheduleTimes = listOf("13:00")
+        )
+        val conflictsSafe = MedicationConflictHelper.evaluateAllConflicts(listOf(medIron, medCalciumSafe))
+        assertTrue("No debe haber conflicto si están separados por 3 horas", conflictsSafe.isEmpty())
+    }
+
+    @Test
+    fun testMedicationConflictHelper_CandidateConflictDetection() {
+        val existingCalcium = PrenatalMedication(
+            id = "med_calcibon",
+            name = "Calcibon Natal",
+            scheduleTimes = listOf("13:00")
+        )
+
+        val candidateIron = PrenatalMedication(
+            id = "med_ferganic",
+            name = "Ferganic forte",
+            activeIngredient = "Hierro elemental"
+        )
+
+        // Intentar programar el Hierro a las 12:30 (diferencia de 30 min con el Calcio de las 13:00)
+        val candidateConflicts = MedicationConflictHelper.evaluateCandidateConflict(
+            candidate = candidateIron,
+            candidateTime = "12:30",
+            otherMedications = listOf(existingCalcium)
+        )
+
+        assertEquals(1, candidateConflicts.size)
+        assertEquals(ConflictSeverity.WARNING, candidateConflicts[0].severity)
+        assertEquals(30, candidateConflicts[0].differenceMinutes)
+    }
+
+    @Test
+    fun testMedicationConflictHelper_SameTimeMultiplePills() {
+        val med1 = PrenatalMedication(
+            name = "Vitamina C",
             scheduleTimes = listOf("08:00")
         )
-        val medCalciumSameTime = PrenatalMedication(
-            name = "Calcio + Vitamina D3",
+        val med2 = PrenatalMedication(
+            name = "Omega 3 DHA",
             scheduleTimes = listOf("08:00")
         )
 
-        val sharesTime = medIron.scheduleTimes.any { it in medCalciumSameTime.scheduleTimes }
-        assertTrue("Debe detectar conflicto de horario entre Hierro y Calcio", sharesTime)
+        val conflicts = MedicationConflictHelper.evaluateAllConflicts(listOf(med1, med2))
+        assertEquals(1, conflicts.size)
+        assertEquals(ConflictSeverity.INFO, conflicts[0].severity)
+        assertEquals(0, conflicts[0].differenceMinutes)
     }
 
     @Test

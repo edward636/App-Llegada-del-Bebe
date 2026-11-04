@@ -14,28 +14,55 @@ import com.example.llegadadelbebe.core.update.UpdateInfo
 object NotificationHelper {
 
     const val CHANNEL_MEDICATIONS = "prenatal_medications_channel"
+    const val CHANNEL_MEDICATIONS_ESCALATED = "prenatal_medications_escalated_channel"
     const val CHANNEL_OTA_UPDATES = "ota_updates_channel"
     const val CHANNEL_ENGAGEMENT = "baby_engagement_channel"
 
     const val NOTIF_ID_OTA = 1001
     const val NOTIF_ID_ENGAGEMENT = 2001
+    const val NOTIF_ID_DAD_CONFIRM_BASE = 5000
 
     fun createNotificationChannels(context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
                 ?: return
 
-            // Canal 1: Medicamentos y Vitaminas (Optimizado HyperOS / ColorOS)
+            val alarmSound = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_ALARM)
+                ?: android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+
+            val alarmAudioAttributes = android.media.AudioAttributes.Builder()
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                .build()
+
+            // Canal 1: Medicamentos y Vitaminas (Nivel 1 - Notificación Normal)
             val medChannel = NotificationChannel(
                 CHANNEL_MEDICATIONS,
                 "Medicamentos y Vitaminas Prenatales",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Recordatorios de tomas médicas y vitaminas duales para Britney y Edward"
+                description = "Recordatorios de tomas médicas y vitaminas para Britney y Edward"
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0, 300, 200, 300)
                 enableLights(true)
                 lightColor = android.graphics.Color.MAGENTA
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                setShowBadge(true)
+                setBypassDnd(true)
+            }
+
+            // Canal 1.5: Recordatorio Escalado (Nivel 2 - Notificación Invasiva con Sonido Fuerte)
+            val medEscalatedChannel = NotificationChannel(
+                CHANNEL_MEDICATIONS_ESCALATED,
+                "Avisos Urgentes de Vitaminas (Escalados)",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Recordatorios insistentes cuando se pospone o demora la toma de vitaminas"
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 600, 250, 600, 250, 900)
+                setSound(alarmSound, alarmAudioAttributes)
+                enableLights(true)
+                lightColor = android.graphics.Color.RED
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
                 setShowBadge(true)
                 setBypassDnd(true)
@@ -67,7 +94,9 @@ object NotificationHelper {
                 lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
             }
 
-            notificationManager.createNotificationChannels(listOf(medChannel, otaChannel, engagementChannel))
+            notificationManager.createNotificationChannels(
+                listOf(medChannel, medEscalatedChannel, otaChannel, engagementChannel)
+            )
         }
     }
 
@@ -144,6 +173,51 @@ object NotificationHelper {
         } catch (_: SecurityException) {
             // Manejo de seguridad
         }
+    }
+
+    /**
+     * Notificación especial para Papá Edward cuando Britney toma su vitamina ("Ya me la tomé").
+     * Mantiene al papá informado al segundo de la salud de su esposa y del bebé.
+     */
+    fun showDadMedicationNotification(
+        context: Context,
+        medName: String,
+        dose: String,
+        takenTime: String,
+        pillsRemaining: Int
+    ) {
+        createNotificationChannels(context)
+
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+
+        val notifId = (NOTIF_ID_DAD_CONFIRM_BASE + medName.hashCode() + takenTime.hashCode())
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            notifId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val title = "🌸 ¡Mamita Britney se tomó su vitamina!"
+        val content = "Britney confirmó la toma de $medName ($dose) a las $takenTime. Quedan $pillsRemaining pastillas en la caja. ¡Cuidado maternal al día! 💙"
+
+        val notification = NotificationCompat.Builder(context, CHANNEL_MEDICATIONS)
+            .setSmallIcon(android.R.drawable.checkbox_on_background)
+            .setContentTitle(title)
+            .setContentText(content)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(content))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setCategory(NotificationCompat.CATEGORY_EVENT)
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+
+        try {
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(notifId, notification)
+        } catch (_: SecurityException) {}
     }
 
     fun areNotificationsEnabled(context: Context): Boolean {

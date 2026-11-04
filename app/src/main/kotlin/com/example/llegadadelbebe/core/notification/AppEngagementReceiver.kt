@@ -20,6 +20,7 @@ class AppEngagementReceiver : BroadcastReceiver() {
         // Si el teléfono se reinicia o se actualiza la app, reactiva el planificador
         if (action == Intent.ACTION_BOOT_COMPLETED || action == Intent.ACTION_MY_PACKAGE_REPLACED) {
             AppEngagementScheduler.scheduleNextCheck(context)
+            MedicationSyncScheduler.scheduleNextSync(context)
             rescheduleMedicationsIfAny(context, localPreferences)
             return
         }

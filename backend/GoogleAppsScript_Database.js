@@ -96,10 +96,10 @@ function getOrCreateSheet(sheetName) {
       case SHEET_CONFIG:
         sheet.appendRow(["versionCode", "versionName", "apkUrl", "changelog", "updatedAt"]);
         sheet.appendRow([
-          25,
-          "1.6.2",
-          "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.2/app-release.apk",
-          "Actualización v1.6.2: Auditoría integral, decodificación cámara 200MP en background, sincronización Two-Phone blindada y failover instantáneo Gemini.",
+          26,
+          "1.6.3",
+          "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.3/app-release.apk",
+          "Actualización v1.6.3: Sincronización en tiempo real de vitaminas, aviso inmediato a Papá cuando Mamá toma la pastilla, recordatorios persistentes con pantalla completa y advertencias médicas de espaciado en horarios.",
           new Date().toISOString()
         ]);
         sheet.getRange(1, 1, 1, 5).setFontWeight("bold").setBackground("#D8F3DC");
@@ -124,28 +124,28 @@ function doGet(e) {
     try {
       const configSheet = getOrCreateSheet(SHEET_CONFIG);
       let vCode = Number(configSheet.getRange(2, 1).getValue()) || 0;
-      if (vCode < 25) {
+      if (vCode < 26) {
         configSheet.getRange(2, 1, 1, 5).setValues([[
-          25,
-          "1.6.2",
-          "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.2/app-release.apk",
-          "Actualización v1.6.2: Auditoría integral, decodificación cámara 200MP en background, sincronización Two-Phone blindada y failover instantáneo Gemini.",
+          26,
+          "1.6.3",
+          "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.3/app-release.apk",
+          "Actualización v1.6.3: Sincronización en tiempo real de vitaminas, aviso inmediato a Papá cuando Mamá toma la pastilla, recordatorios persistentes con pantalla completa y advertencias médicas de espaciado en horarios.",
           new Date().toISOString()
         ]]);
       }
       const row = configSheet.getRange(2, 1, 1, 5).getValues()[0];
       return jsonResponse({
-        latestVersionCode: Number(row[0]) || 25,
-        latestVersionName: String(row[1]) || "1.6.2",
-        apkUrl: String(row[2]) || "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.2/app-release.apk",
-        changelog: String(row[3]) || "Actualización v1.6.2 oficial disponible."
+        latestVersionCode: Number(row[0]) || 26,
+        latestVersionName: String(row[1]) || "1.6.3",
+        apkUrl: String(row[2]) || "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.3/app-release.apk",
+        changelog: String(row[3]) || "Actualización v1.6.3 oficial disponible."
       });
     } catch (err) {
       return jsonResponse({
-        latestVersionCode: 25,
-        latestVersionName: "1.6.2",
-        apkUrl: "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.2/app-release.apk",
-        changelog: "Actualización v1.6.2 oficial disponible."
+        latestVersionCode: 26,
+        latestVersionName: "1.6.3",
+        apkUrl: "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.3/app-release.apk",
+        changelog: "Actualización v1.6.3 oficial disponible."
       });
     }
   }
