@@ -27,12 +27,31 @@ Write-Host "   -> Version a publicar: $tagName (versionCode = $versionCode)" -Fo
 Write-Host "`n[PASO 2/6] Obteniendo credenciales de GitHub..." -ForegroundColor Cyan
 $token = $env:GITHUB_TOKEN
 if (-not $token) {
-    $credOutput = "protocol=https`nhost=github.com" | git credential fill 2>$null
-    foreach ($line in ($credOutput -split "`n")) {
-        if ($line -like "password=*") {
-            $token = $line.Substring(9).Trim()
-            break
+    $pinfo = New-Object System.Diagnostics.ProcessStartInfo
+    $pinfo.FileName = "git.exe"
+    $pinfo.Arguments = "credential fill"
+    $pinfo.RedirectStandardInput = $true
+    $pinfo.RedirectStandardOutput = $true
+    $pinfo.RedirectStandardError = $true
+    $pinfo.UseShellExecute = $false
+    $p = [System.Diagnostics.Process]::Start($pinfo)
+    $p.StandardInput.WriteLine("protocol=https")
+    $p.StandardInput.WriteLine("host=github.com")
+    $p.StandardInput.WriteLine("username=edward636")
+    $p.StandardInput.WriteLine("")
+    $p.StandardInput.Flush()
+    $p.StandardInput.Close()
+
+    if ($p.WaitForExit(5000)) {
+        $out = $p.StandardOutput.ReadToEnd()
+        foreach ($line in ($out -split "`n")) {
+            if ($line -like "password=*") {
+                $token = $line.Substring(9).Trim()
+                break
+            }
         }
+    } else {
+        $p.Kill()
     }
 }
 
