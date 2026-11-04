@@ -194,4 +194,46 @@ class PrenatalMedicationsTest {
         assertTrue(updatedMed.isTakenToday)
         assertEquals("Mamá (Britney)", updatedMed.lastConfirmedBy)
     }
+
+    @Test
+    fun testMedicationConflictHelper_FerganicDoesNotConflictWithItselfEvenWithCalciumWarning() {
+        // Reproduce el caso exacto reportado por el usuario:
+        // Ferganic Folic con advertencia médica que menciona "calcio"
+        val ferganic = PrenatalMedication(
+            id = "med_ferganic_folic",
+            name = "Ferganic Folic",
+            activeIngredient = "Hierro polimaltosado + Ácido Fólico",
+            scheduleTimes = listOf("10:00"),
+            clinicalWarnings = "El calcio bloquea la absorción del hierro. Separar 2 horas de lácteos o calcio."
+        )
+
+        // 1. Debe clasificarse como Hierro pero NUNCA como Calcio a pesar de la advertencia
+        assertTrue("Ferganic debe ser clasificado como Hierro", MedicationConflictHelper.isIron(ferganic))
+        assertFalse("Ferganic NO debe ser clasificado como Calcio a pesar del texto de la advertencia", MedicationConflictHelper.isCalcium(ferganic))
+
+        // 2. No debe entrar en conflicto sobre sí mismo
+        val selfConflicts = MedicationConflictHelper.evaluateAllConflicts(listOf(ferganic))
+        assertTrue("Ferganic Folic nunca debe entrar en conflicto consigo mismo", selfConflicts.isEmpty())
+
+        // 3. Al evaluar como candidato (en el diálogo de edición), no debe colisionar consigo mismo
+        val candidateConflicts = MedicationConflictHelper.evaluateCandidateConflict(
+            candidate = ferganic.copy(id = "candidate_med"),
+            candidateTime = "10:00",
+            otherMedications = listOf(ferganic)
+        )
+        assertTrue("Candidato con el mismo nombre no debe colisionar con la medicina ya existente", candidateConflicts.isEmpty())
+
+        // 4. Si se compara con Calcibon Natal a las 11:00, los nombres deben asignarse correctamente
+        val calcibon = PrenatalMedication(
+            id = "med_calcibon",
+            name = "Calcibon Natal",
+            activeIngredient = "Calcio citrato",
+            scheduleTimes = listOf("11:00")
+        )
+        val pairConflicts = MedicationConflictHelper.evaluateAllConflicts(listOf(ferganic, calcibon))
+        assertEquals(1, pairConflicts.size)
+        assertEquals("Calcibon Natal", pairConflicts[0].med2Name)
+        assertEquals("Ferganic Folic", pairConflicts[0].med1Name)
+        assertTrue(pairConflicts[0].description.contains("El Calcio en 'Calcibon Natal' (11:00) bloquea la absorción del Hierro en 'Ferganic Folic' (10:00)"))
+    }
 }

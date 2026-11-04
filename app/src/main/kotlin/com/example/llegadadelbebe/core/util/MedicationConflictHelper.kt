@@ -50,17 +50,21 @@ object MedicationConflictHelper {
     )
 
     fun isIron(med: PrenatalMedication): Boolean {
-        val text = "${med.name} ${med.activeIngredient} ${med.clinicalWarnings}".lowercase()
+        // Buscar ÚNICAMENTE en el nombre y principio activo, NUNCA en advertencias clínicas
+        // porque las advertencias advierten sobre interactores ("no tomar con calcio / leche")
+        val text = "${med.name} ${med.activeIngredient}".lowercase()
         return IRON_KEYWORDS.any { text.contains(it) }
     }
 
     fun isCalcium(med: PrenatalMedication): Boolean {
-        val text = "${med.name} ${med.activeIngredient} ${med.clinicalWarnings}".lowercase()
+        // Buscar ÚNICAMENTE en el nombre y principio activo, NUNCA en advertencias clínicas
+        val text = "${med.name} ${med.activeIngredient}".lowercase()
         return CALCIUM_KEYWORDS.any { text.contains(it) }
     }
 
     fun isMultivitamin(med: PrenatalMedication): Boolean {
-        val text = "${med.name} ${med.activeIngredient} ${med.clinicalWarnings}".lowercase()
+        // Buscar ÚNICAMENTE en el nombre y principio activo, NUNCA en advertencias clínicas
+        val text = "${med.name} ${med.activeIngredient}".lowercase()
         return MULTIVITAMIN_KEYWORDS.any { text.contains(it) }
     }
 
@@ -111,7 +115,10 @@ object MedicationConflictHelper {
         otherMedications: List<PrenatalMedication>
     ): List<MedicationConflict> {
         val conflicts = mutableListOf<MedicationConflict>()
-        val filteredOthers = otherMedications.filterNot { it.id == candidate.id }
+        val filteredOthers = otherMedications.filterNot { other ->
+            (candidate.id.isNotBlank() && other.id.isNotBlank() && other.id == candidate.id) ||
+            (candidate.name.isNotBlank() && other.name.trim().equals(candidate.name.trim(), ignoreCase = true))
+        }
 
         for (other in filteredOthers) {
             for (otherTime in other.scheduleTimes) {
@@ -130,6 +137,10 @@ object MedicationConflictHelper {
         med2: PrenatalMedication,
         time2: String
     ): MedicationConflict? {
+        // REGLA FUNDAMENTAL: Un medicamento NUNCA entra en conflicto consigo mismo ni con otra toma de sí mismo
+        if (med1.id.isNotBlank() && med2.id.isNotBlank() && med1.id == med2.id) return null
+        if (med1.name.trim().equals(med2.name.trim(), ignoreCase = true)) return null
+
         val diffMin = calculateMinutesDifference(time1, time2)
         if (diffMin >= 120) return null
 
@@ -140,19 +151,33 @@ object MedicationConflictHelper {
 
         // 1. REGLA ORO: Hierro vs Calcio (Interferencia clínica mayor)
         if ((isM1Iron && isM2Calcium) || (isM2Iron && isM1Calcium)) {
-            val ironName = if (isM1Iron) med1.name else med2.name
-            val calciumName = if (isM1Calcium) med1.name else med2.name
-            val ironTime = if (isM1Iron) time1 else time2
-            val calciumTime = if (isM1Calcium) time1 else time2
+            val ironMed: PrenatalMedication
+            val ironTime: String
+            val calciumMed: PrenatalMedication
+            val calciumTime: String
+
+            if (isM1Iron && isM2Calcium) {
+                ironMed = med1
+                ironTime = time1
+                calciumMed = med2
+                calciumTime = time2
+            } else {
+                ironMed = med2
+                ironTime = time2
+                calciumMed = med1
+                calciumTime = time1
+            }
+
+            if (ironMed.name.trim().equals(calciumMed.name.trim(), ignoreCase = true)) return null
 
             return MedicationConflict(
-                med1Name = ironName,
+                med1Name = ironMed.name,
                 med1Time = ironTime,
-                med2Name = calciumName,
+                med2Name = calciumMed.name,
                 med2Time = calciumTime,
                 differenceMinutes = diffMin,
                 title = "⚠️ Interferencia de absorción: Calcio y Hierro",
-                description = "El Calcio en '$calciumName' ($calciumTime) bloquea la absorción del Hierro en '$ironName' ($ironTime). Tienen solo $diffMin min de diferencia. Se recomienda espaciarlos al menos 2 horas (120 min).",
+                description = "El Calcio en '${calciumMed.name}' ($calciumTime) bloquea la absorción del Hierro en '${ironMed.name}' ($ironTime). Tienen solo $diffMin min de diferencia. Se recomienda espaciarlos al menos 2 horas (120 min).",
                 severity = ConflictSeverity.WARNING
             )
         }
@@ -161,19 +186,33 @@ object MedicationConflictHelper {
         val isM1Multi = isMultivitamin(med1)
         val isM2Multi = isMultivitamin(med2)
         if (((isM1Iron && isM2Multi) || (isM2Iron && isM1Multi)) && diffMin < 60) {
-            val ironName = if (isM1Iron) med1.name else med2.name
-            val multiName = if (isM1Multi) med1.name else med2.name
-            val ironTime = if (isM1Iron) time1 else time2
-            val multiTime = if (isM1Multi) time1 else time2
+            val ironMed: PrenatalMedication
+            val ironTime: String
+            val multiMed: PrenatalMedication
+            val multiTime: String
+
+            if (isM1Iron && isM2Multi) {
+                ironMed = med1
+                ironTime = time1
+                multiMed = med2
+                multiTime = time2
+            } else {
+                ironMed = med2
+                ironTime = time2
+                multiMed = med1
+                multiTime = time1
+            }
+
+            if (ironMed.name.trim().equals(multiMed.name.trim(), ignoreCase = true)) return null
 
             return MedicationConflict(
-                med1Name = ironName,
+                med1Name = ironMed.name,
                 med1Time = ironTime,
-                med2Name = multiName,
+                med2Name = multiMed.name,
                 med2Time = multiTime,
                 differenceMinutes = diffMin,
                 title = "💡 Consejo de espaciado: Hierro y Multivitamínico",
-                description = "'$ironName' ($ironTime) y '$multiName' ($multiTime) están muy cercanos ($diffMin min). Separarlos al menos 1 hora permite asimilar mejor el hierro sin sobrecarga gástrica.",
+                description = "'${ironMed.name}' ($ironTime) y '${multiMed.name}' ($multiTime) están muy cercanos ($diffMin min). Separarlos al menos 1 hora permite asimilar mejor el hierro sin sobrecarga gástrica.",
                 severity = ConflictSeverity.CAUTION
             )
         }
