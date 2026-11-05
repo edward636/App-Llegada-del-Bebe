@@ -32,6 +32,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
@@ -183,12 +184,24 @@ fun MainNavigation(
         PrenatalMedicationsViewModel(context.applicationContext as android.app.Application)
     }
 
+    val syncedProducts by sharedRepository.products.collectAsStateWithLifecycle()
+    LaunchedEffect(syncedProducts) {
+        if (syncedProducts.isNotEmpty()) {
+            medicationsViewModel.syncWithCloud(googleSheetUrlState)
+        }
+    }
+
+    val syncedMedications by medicationsViewModel.medications.collectAsStateWithLifecycle()
+    LaunchedEffect(syncedMedications) {
+        homeViewModel.refreshSnapshot()
+    }
+
     // Sincronización global reactiva multi-dispositivo en ON_RESUME (al abrir o regresar a la app)
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                sharedRepository.triggerSync(googleSheetUrlState)
                 medicationsViewModel.syncWithCloud(googleSheetUrlState)
+                sharedRepository.triggerSync(googleSheetUrlState)
                 radarViewModel.syncQuotesWithCloud(googleSheetUrlState)
                 radarViewModel.syncStoresWithCloud(googleSheetUrlState)
                 consumablesViewModel.syncHospitalBagWithCloud(googleSheetUrlState)

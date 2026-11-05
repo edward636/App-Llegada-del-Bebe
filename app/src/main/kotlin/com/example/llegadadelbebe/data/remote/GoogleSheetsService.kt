@@ -35,10 +35,14 @@ class GoogleSheetsService {
         const val SYS_RADAR_QUOTES = "SYS_RADAR_QUOTES"
         const val SYS_KNOWN_STORES = "SYS_KNOWN_STORES"
         const val SYS_HOSPITAL_BAG = "SYS_HOSPITAL_BAG"
+
+        // Caché compartida en memoria de registros SYS_* extraídos durante fetchInventory o getRecord
+        private val cachedSystemRecords = java.util.concurrent.ConcurrentHashMap<String, SystemRecordData>()
     }
 
     /**
-     * Obtiene la lista completa de artículos desde Google Sheets.
+     * Obtiene la lista completa de artículos desde Google Sheets y aprovecha la misma respuesta
+     * para hidratar en memoria los registros de sistema (SYS_PRENATAL_MEDICATIONS, SYS_RADAR_QUOTES, etc.).
      */
     suspend fun fetchInventory(webAppUrl: String): Result<List<BabyProduct>> = withContext(Dispatchers.IO) {
         try {
@@ -54,8 +58,25 @@ class GoogleSheetsService {
             for (i in 0 until jsonArray.length()) {
                 val item = jsonArray.getJSONObject(i)
                 val statusStr = item.optString("status", "PURCHASED").uppercase().trim()
-                // Ignorar filas eliminadas lógicamente, filas de prueba técnica o registros internos de sistema
-                if (statusStr == "DELETED" || item.optString("id") == "test-check-1" || item.optString("id").startsWith("SYS_")) continue
+                val itemId = item.optString("id")
+
+                if (itemId.startsWith("SYS_") && statusStr != "DELETED") {
+                    val rawSysNotes = item.optString("notes", "")
+                    val (_, sysMeta) = unpackNotesAndMeta(rawSysNotes)
+                    val sysPayload = sysMeta?.optString("payload")?.takeIf { it.isNotBlank() }
+                    val sysDeletedIds = extractDeletedIds(sysMeta)
+                    val sysUpdatedAt = item.optLong("updatedAt", 0L)
+                    cachedSystemRecords[itemId] = SystemRecordData(
+                        found = true,
+                        payload = sysPayload,
+                        deletedIds = sysDeletedIds,
+                        updatedAt = sysUpdatedAt
+                    )
+                    continue
+                }
+
+                // Ignorar filas eliminadas lógicamente o filas de prueba técnica
+                if (statusStr == "DELETED" || itemId == "test-check-1" || itemId.startsWith("SYS_")) continue
 
                 val categoryStr = item.optString("category", "CLOTHING")
                 val category = runCatching {
@@ -223,7 +244,8 @@ class GoogleSheetsService {
                     fastEndpointHandledError = RuntimeException(errMsg)
                 } else if (fastStatus == "success" && fastJson.has("found")) {
                     if (!fastJson.optBoolean("found", false)) {
-                        return@withContext Result.success(SystemRecordData(found = false, payload = null))
+                        val notFoundData = SystemRecordData(found = false, payload = null)
+                        return@withContext Result.success(cachedSystemRecords[systemId] ?: notFoundData)
                     }
                     val item = fastJson.optJSONObject("item")
                     val rawNotes = item?.optString("notes", "") ?: ""
@@ -231,24 +253,29 @@ class GoogleSheetsService {
                     val payload = metaJson?.optString("payload")?.takeIf { it.isNotBlank() }
                     val deletedIds = extractDeletedIds(metaJson)
                     val updatedAt = item?.optLong("updatedAt", 0L) ?: 0L
-                    return@withContext Result.success(
-                        SystemRecordData(
-                            found = true,
-                            payload = payload,
-                            deletedIds = deletedIds,
-                            updatedAt = updatedAt
-                        )
+                    val recordData = SystemRecordData(
+                        found = true,
+                        payload = payload,
+                        deletedIds = deletedIds,
+                        updatedAt = updatedAt
                     )
+                    cachedSystemRecords[systemId] = recordData
+                    return@withContext Result.success(recordData)
                 }
             } catch (_: Exception) {
-                // Si falla la conexión puntual o el script es v1 sin getRecord, intentar fallback general
+                // Si falla la conexión puntual o el script es v1 sin getRecord, usar caché reciente o fallback
+            }
+
+            // Si ya tenemos el registro fresco extraído por fetchInventory, devolverlo de inmediato sin repetir descarga pesada
+            cachedSystemRecords[systemId]?.let { cached ->
+                return@withContext Result.success(cached)
             }
 
             if (fastEndpointHandledError != null) {
                 return@withContext Result.failure(fastEndpointHandledError)
             }
 
-            // 2. Fallback de barrido general en la hoja (solo si el script no soportó getRecord)
+            // 2. Fallback de barrido general en la hoja (solo si no estaba en caché ni respondió getRecord)
             val response = executeGetFollowingRedirects(webAppUrl)
             val jsonObject = JSONObject(response)
             if (jsonObject.optString("status") != "success") {
@@ -258,24 +285,24 @@ class GoogleSheetsService {
             val jsonArray = jsonObject.optJSONArray("data") ?: JSONArray()
             for (i in 0 until jsonArray.length()) {
                 val item = jsonArray.getJSONObject(i)
-                if (item.optString("id") == systemId) {
+                val rowId = item.optString("id")
+                if (rowId.startsWith("SYS_")) {
                     val rawNotes = item.optString("notes", "")
                     val (_, metaJson) = unpackNotesAndMeta(rawNotes)
                     val payload = metaJson?.optString("payload")?.takeIf { it.isNotBlank() }
                     val deletedIds = extractDeletedIds(metaJson)
                     val updatedAt = item.optLong("updatedAt", 0L)
-                    return@withContext Result.success(
-                        SystemRecordData(
-                            found = true,
-                            payload = payload,
-                            deletedIds = deletedIds,
-                            updatedAt = updatedAt
-                        )
+                    cachedSystemRecords[rowId] = SystemRecordData(
+                        found = true,
+                        payload = payload,
+                        deletedIds = deletedIds,
+                        updatedAt = updatedAt
                     )
                 }
             }
-            Result.success(SystemRecordData(found = false, payload = null))
+            Result.success(cachedSystemRecords[systemId] ?: SystemRecordData(found = false, payload = null))
         } catch (e: Exception) {
+            cachedSystemRecords[systemId]?.let { return@withContext Result.success(it) }
             Result.failure(e)
         }
     }
@@ -317,6 +344,7 @@ class GoogleSheetsService {
                 packedNotes = buildPackedNotes(compactPayload)
             }
 
+            val nowMillis = System.currentTimeMillis()
             val payload = JSONObject().apply {
                 put("action", "saveItem")
                 put("item", JSONObject().apply {
@@ -325,12 +353,22 @@ class GoogleSheetsService {
                     put("category", "SYSTEM")
                     put("status", "ACTIVE")
                     put("notes", packedNotes)
-                    put("updatedAt", System.currentTimeMillis())
+                    put("updatedAt", nowMillis)
                 })
             }
             val response = executePostToAppsScript(webAppUrl, payload.toString())
             val jsonObject = JSONObject(response)
-            Result.success(jsonObject.optString("status") == "success")
+            val ok = jsonObject.optString("status") == "success"
+            if (ok) {
+                val (_, savedMeta) = unpackNotesAndMeta(packedNotes)
+                cachedSystemRecords[systemId] = SystemRecordData(
+                    found = true,
+                    payload = savedMeta?.optString("payload"),
+                    deletedIds = deletedIds,
+                    updatedAt = nowMillis
+                )
+            }
+            Result.success(ok)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -431,8 +469,8 @@ class GoogleSheetsService {
             val u = URL(currentUrl)
             val conn = (u.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
-                connectTimeout = 12000
-                readTimeout = 15000
+                connectTimeout = 20000
+                readTimeout = 25000
                 instanceFollowRedirects = false
             }
             val code = conn.responseCode

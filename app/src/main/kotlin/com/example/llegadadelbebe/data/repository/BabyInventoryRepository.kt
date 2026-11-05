@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
 enum class CloudSyncStatus(val label: String, val icon: String) {
@@ -40,13 +42,11 @@ class BabyInventoryRepository(
     val syncStatus: StateFlow<CloudSyncStatus> = _syncStatus.asStateFlow()
 
     private var activeGoogleSheetUrl: String = ""
+    private val inventorySyncMutex = Mutex()
 
     fun initializeSheetUrl(url: String) {
         if (url.isNotBlank() && activeGoogleSheetUrl != url) {
             activeGoogleSheetUrl = url
-            scope.launch {
-                syncFromGoogleSheets(url)
-            }
         }
     }
 
@@ -121,14 +121,14 @@ class BabyInventoryRepository(
      * cambios o creaciones realizadas localmente mientras no había conexión a internet,
      * y distingue entre productos creados offline y eliminaciones remotas para evitar resurrección.
      */
-    suspend fun syncFromGoogleSheets(googleSheetUrl: String): Result<Unit> {
+    suspend fun syncFromGoogleSheets(googleSheetUrl: String): Result<Unit> = inventorySyncMutex.withLock {
         val targetUrl = googleSheetUrl.ifBlank { activeGoogleSheetUrl }
-        if (targetUrl.isBlank()) return Result.failure(IllegalArgumentException("URL vacía"))
+        if (targetUrl.isBlank()) return@withLock Result.failure(IllegalArgumentException("URL vacía"))
 
         _syncStatus.value = CloudSyncStatus.SYNCING
         val result = sheetsService.fetchInventory(targetUrl)
 
-        return if (result.isSuccess) {
+        return@withLock if (result.isSuccess) {
             _syncStatus.value = CloudSyncStatus.ONLINE
             val remoteItems = result.getOrNull() ?: emptyList()
             val deletedIds = localPreferences?.getDeletedProductIds() ?: emptySet()
@@ -136,10 +136,12 @@ class BabyInventoryRepository(
             val currentLocalMap = _products.value.associateBy { it.id }.toMutableMap()
             val mergedProducts = mutableListOf<BabyProduct>()
             val itemsToUpload = mutableListOf<BabyProduct>()
+            val remoteIdsStillToDelete = mutableListOf<String>()
 
             // 1. Procesar elementos que vinieron de la nube
             for (remote in remoteItems) {
                 if (remote.id in deletedIds) {
+                    remoteIdsStillToDelete.add(remote.id)
                     continue
                 }
                 val local = currentLocalMap.remove(remote.id)
@@ -166,8 +168,6 @@ class BabyInventoryRepository(
             }
 
             // 2. Procesar productos creados localmente sin internet que no existen aún en la nube
-            // Solo se conservan y suben los que fueron creados/editados explícitamente en este teléfono (pendingUploadIds).
-            // Si no están en pendingUploadIds, significa que fueron eliminados en la nube por el otro dispositivo.
             for ((localId, localItem) in currentLocalMap) {
                 if (localId in pendingUploadIds && localId !in deletedIds) {
                     mergedProducts.add(localItem)
@@ -190,10 +190,10 @@ class BabyInventoryRepository(
                 }
             }
 
-            // 4. Limpiar eliminaciones pendientes en la nube
-            if (deletedIds.isNotEmpty()) {
+            // 4. Limpiar eliminaciones pendientes en la nube ÚNICAMENTE si aún aparecen en remoteItems
+            if (remoteIdsStillToDelete.isNotEmpty()) {
                 scope.launch {
-                    deletedIds.forEach { delId ->
+                    remoteIdsStillToDelete.forEach { delId ->
                         sheetsService.deleteProductRemote(
                             targetUrl,
                             BabyProduct(

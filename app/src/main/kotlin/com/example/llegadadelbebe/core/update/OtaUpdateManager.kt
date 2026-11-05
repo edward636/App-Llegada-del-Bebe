@@ -53,9 +53,9 @@ object OtaUpdateManager {
                 @Suppress("DEPRECATION")
                 context.packageManager.getPackageInfo(context.packageName, 0)
             }
-            pInfo.versionName ?: "1.6.5"
+            pInfo.versionName ?: "1.6.6"
         } catch (_: Exception) {
-            "1.6.5"
+            "1.6.6"
         }
     }
 
@@ -77,7 +77,7 @@ object OtaUpdateManager {
                 pInfo.versionCode
             }
         } catch (_: Exception) {
-            28
+            29
         }
     }
 

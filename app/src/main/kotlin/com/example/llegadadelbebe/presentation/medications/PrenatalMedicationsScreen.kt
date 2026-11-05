@@ -120,6 +120,10 @@ fun PrenatalMedicationsScreen(
     var selectedMedForEdit by remember { mutableStateOf<PrenatalMedication?>(null) }
     var pendingPhotoUri by remember { mutableStateOf<Uri?>(null) }
     var analysisErrorMessage by remember { mutableStateOf("") }
+    var dismissedConflictSignature by remember { mutableStateOf("") }
+    val currentConflictSignature = remember(scheduleConflicts) {
+        scheduleConflicts.joinToString("|") { "${it.med1Name}_${it.med2Name}_${it.differenceMinutes}" }
+    }
 
     val processMedicationUri: (Uri) -> Unit = { uri ->
         coroutineScope.launch {
@@ -273,8 +277,8 @@ fun PrenatalMedicationsScreen(
             // Tarjeta Hero con Micro-animación de Adherencia
             AdherenceHeroCard(adherence = adherence)
 
-            // Banner Clínico de Advertencia de Horarios e Interacciones Médicas
-            if (scheduleConflicts.isNotEmpty()) {
+            // Banner Clínico de Advertencia de Horarios e Interacciones Médicas (cerrable con ✕)
+            if (scheduleConflicts.isNotEmpty() && dismissedConflictSignature != currentConflictSignature) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -283,18 +287,38 @@ fun PrenatalMedicationsScreen(
                     border = BorderStroke(1.5.dp, Color(0xFFFFB74D))
                 ) {
                     Column(
-                        modifier = Modifier.padding(14.dp),
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("⚠️", fontSize = 18.sp)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Advertencia de Espaciado en Horarios (${scheduleConflicts.size})",
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 13.sp,
-                                color = Color(0xFFE65100)
-                            )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("⚠️", fontSize = 18.sp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Advertencia de Espaciado en Horarios (${scheduleConflicts.size})",
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 13.sp,
+                                    color = Color(0xFFE65100)
+                                )
+                            }
+                            IconButton(
+                                onClick = { dismissedConflictSignature = currentConflictSignature },
+                                modifier = Modifier.size(26.dp)
+                            ) {
+                                Text(
+                                    text = "✕",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFE65100)
+                                )
+                            }
                         }
                         scheduleConflicts.forEach { conflict ->
                             Text(
@@ -539,23 +563,39 @@ fun AdherenceHeroCard(adherence: MedicationAdherenceSummary) {
                 trackColor = MaterialTheme.colorScheme.surfaceVariant
             )
 
-            // Alerta si hay medicamentos con bajo stock
-            if (adherence.lowStockCount > 0) {
+            // Alerta si hay medicamentos con bajo stock (cerrable con ✕)
+            var isLowStockWarningDismissed by remember(adherence.lowStockCount) { mutableStateOf(false) }
+            if (adherence.lowStockCount > 0 && !isLowStockWarningDismissed) {
                 Surface(
                     shape = RoundedCornerShape(8.dp),
                     color = Color(0xFFFFF3E0),
                     border = BorderStroke(1.dp, Color(0xFFFFB74D)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(modifier = Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text("⚠️", fontSize = 14.sp)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Hay ${adherence.lowStockCount} vitamina(s) por agotarse (quedan ≤ 5 pastillas).",
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFE65100)
-                        )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("⚠️", fontSize = 14.sp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Hay ${adherence.lowStockCount} vitamina(s) por agotarse (quedan ≤ 5 pastillas).",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFE65100)
+                            )
+                        }
+                        IconButton(
+                            onClick = { isLowStockWarningDismissed = true },
+                            modifier = Modifier.size(22.dp)
+                        ) {
+                            Text("✕", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                        }
                     }
                 }
             }
@@ -663,19 +703,39 @@ fun MedicationCard(
                 }
             }
 
-            if (med.clinicalWarnings.isNotBlank()) {
+            var isClinicalWarningDismissed by remember(med.id, med.clinicalWarnings) { mutableStateOf(false) }
+            if (med.clinicalWarnings.isNotBlank() && !isClinicalWarningDismissed) {
                 Surface(
                     shape = RoundedCornerShape(6.dp),
                     color = Color(0xFFFFEBEE),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        text = "⚠️ ${med.clinicalWarnings}",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color(0xFFC62828),
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "⚠️ ${med.clinicalWarnings}",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFFC62828),
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(
+                            onClick = { isClinicalWarningDismissed = true },
+                            modifier = Modifier.size(20.dp)
+                        ) {
+                            Text(
+                                text = "✕",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFC62828)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -846,8 +906,9 @@ fun MedicationEditorDialog(
                     )
                 }
 
-                // Alerta interactiva de conflicto horario y farmacológico en vivo
-                if (activeConflicts.isNotEmpty()) {
+                // Alerta interactiva de conflicto horario y farmacológico en vivo (cerrable con ✕)
+                var isDialogConflictDismissed by remember(timeText, name) { mutableStateOf(false) }
+                if (activeConflicts.isNotEmpty() && !isDialogConflictDismissed) {
                     activeConflicts.forEach { conflict ->
                         val (bgColor, bdrColor, txtColor) = when (conflict.severity) {
                             ConflictSeverity.WARNING -> Triple(Color(0xFFFFEBEE), Color(0xFFEF5350), Color(0xFFC62828))
@@ -861,12 +922,25 @@ fun MedicationEditorDialog(
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(modifier = Modifier.padding(10.dp)) {
-                                Text(
-                                    text = conflict.title,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
-                                    color = txtColor
-                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = conflict.title,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = txtColor,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    IconButton(
+                                        onClick = { isDialogConflictDismissed = true },
+                                        modifier = Modifier.size(22.dp)
+                                    ) {
+                                        Text("✕", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = txtColor)
+                                    }
+                                }
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = conflict.description,

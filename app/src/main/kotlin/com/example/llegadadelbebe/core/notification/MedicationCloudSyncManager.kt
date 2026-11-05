@@ -219,70 +219,73 @@ object MedicationCloudSyncManager {
                 forceUpload = forceUpload
             )
 
-            // Cancelar alarmas de vitaminas eliminadas o plantillas descartadas
-            plan.removedLocalItems.forEach { removed ->
-                removed.scheduleTimes.forEach { time ->
-                    MedicationAlarmScheduler.cancelMedicationAlarm(appContext, removed.id, time)
-                }
-            }
-
-            val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-            NotificationHelper.createNotificationChannels(appContext)
-
-            // Reconciliar alarmas y avisos al Papá para cada vitamina activa
-            plan.merged.forEach { med ->
-                val oldTimes = previousSchedulesById[med.id].orEmpty()
-                (oldTimes - med.scheduleTimes.toSet()).forEach { obsoleteTime ->
-                    MedicationAlarmScheduler.cancelMedicationAlarm(appContext, med.id, obsoleteTime)
-                }
-
-                if (isDad &&
-                    med.lastTakenDate == todayStr &&
-                    med.lastConfirmedBy.contains("Mamá", ignoreCase = true)
-                ) {
-                    if (!localPreferences.isDadNotifiedForDose(med.id, med.lastTakenDate, med.lastTakenTime)) {
-                        NotificationHelper.showDadMedicationNotification(
-                            context = appContext,
-                            medName = med.name,
-                            dose = med.dose,
-                            takenTime = med.lastTakenTime,
-                            pillsRemaining = med.pillsRemaining
-                        )
-                        localPreferences.markDadNotifiedForDose(med.id, med.lastTakenDate, med.lastTakenTime)
-                    }
-                }
-
-                if (med.isTakenToday) {
-                    // Limpiar cualquier notificación o posposición pendiente de hoy y dejar lista la alarma de mañana
-                    notificationManager?.cancel(med.id.hashCode())
-                    notificationManager?.cancel((med.id + "_escalated").hashCode())
-                    localPreferences.resetMedicationAttemptCount(med.id, todayStr)
-                    MedicationAlarmScheduler.cancelSnoozeAlarm(appContext, med.id)
-                    med.scheduleTimes.forEach { time ->
-                        MedicationAlarmScheduler.scheduleNextDailyAlarm(
-                            context = appContext,
-                            medId = med.id,
-                            medName = med.name,
-                            dose = med.dose,
-                            instructions = med.foodInstructions,
-                            timeStr = time
-                        )
-                    }
-                } else {
-                    med.scheduleTimes.forEach { time ->
-                        MedicationAlarmScheduler.scheduleMedicationAlarm(
-                            context = appContext,
-                            medId = med.id,
-                            medName = med.name,
-                            dose = med.dose,
-                            instructions = med.foodInstructions,
-                            timeStr = time
-                        )
-                    }
-                }
-            }
-
+            // Guardar en caché inmediatamente antes de programar alarmas para blindar la persistencia local
             localPreferences.saveMedicationsCache(plan.merged)
+
+            runCatching {
+                // Cancelar alarmas de vitaminas eliminadas o plantillas descartadas
+                plan.removedLocalItems.forEach { removed ->
+                    removed.scheduleTimes.forEach { time ->
+                        MedicationAlarmScheduler.cancelMedicationAlarm(appContext, removed.id, time)
+                    }
+                }
+
+                val notificationManager = appContext.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+                NotificationHelper.createNotificationChannels(appContext)
+
+                // Reconciliar alarmas y avisos al Papá para cada vitamina activa
+                plan.merged.forEach { med ->
+                    val oldTimes = previousSchedulesById[med.id].orEmpty()
+                    (oldTimes - med.scheduleTimes.toSet()).forEach { obsoleteTime ->
+                        MedicationAlarmScheduler.cancelMedicationAlarm(appContext, med.id, obsoleteTime)
+                    }
+
+                    if (isDad &&
+                        med.lastTakenDate == todayStr &&
+                        med.lastConfirmedBy.contains("Mamá", ignoreCase = true)
+                    ) {
+                        if (!localPreferences.isDadNotifiedForDose(med.id, med.lastTakenDate, med.lastTakenTime)) {
+                            NotificationHelper.showDadMedicationNotification(
+                                context = appContext,
+                                medName = med.name,
+                                dose = med.dose,
+                                takenTime = med.lastTakenTime,
+                                pillsRemaining = med.pillsRemaining
+                            )
+                            localPreferences.markDadNotifiedForDose(med.id, med.lastTakenDate, med.lastTakenTime)
+                        }
+                    }
+
+                    if (med.isTakenToday) {
+                        // Limpiar cualquier notificación o posposición pendiente de hoy y dejar lista la alarma de mañana
+                        notificationManager?.cancel(med.id.hashCode())
+                        notificationManager?.cancel((med.id + "_escalated").hashCode())
+                        localPreferences.resetMedicationAttemptCount(med.id, todayStr)
+                        MedicationAlarmScheduler.cancelSnoozeAlarm(appContext, med.id)
+                        med.scheduleTimes.forEach { time ->
+                            MedicationAlarmScheduler.scheduleNextDailyAlarm(
+                                context = appContext,
+                                medId = med.id,
+                                medName = med.name,
+                                dose = med.dose,
+                                instructions = med.foodInstructions,
+                                timeStr = time
+                            )
+                        }
+                    } else {
+                        med.scheduleTimes.forEach { time ->
+                            MedicationAlarmScheduler.scheduleMedicationAlarm(
+                                context = appContext,
+                                medId = med.id,
+                                medName = med.name,
+                                dose = med.dose,
+                                instructions = med.foodInstructions,
+                                timeStr = time
+                            )
+                        }
+                    }
+                }
+            }
 
             var uploadSuccess = true
             if (plan.shouldUpload) {
