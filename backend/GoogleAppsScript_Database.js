@@ -96,10 +96,10 @@ function getOrCreateSheet(sheetName) {
       case SHEET_CONFIG:
         sheet.appendRow(["versionCode", "versionName", "apkUrl", "changelog", "updatedAt"]);
         sheet.appendRow([
-          27,
-          "1.6.4",
-          "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.4/app-release.apk",
-          "Actualización v1.6.4: Corrección de auto-conflicto en espaciado horario de vitaminas (Ferganic Folic), soporte para advertencias clínicas sin interferencias cruzadas y estabilidad de sincronización.",
+          28,
+          "1.6.5",
+          "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.5/app-release.apk",
+          "Actualización v1.6.5: Sincronización garantizada en tiempo real de Vitaminas entre Papá y Mamá (eliminación de desbordamiento de 50,000 caracteres en Google Sheets, tombstones de borrado, Mutex atómico y recuperación automática de vitaminas cargadas).",
           new Date().toISOString()
         ]);
         sheet.getRange(1, 1, 1, 5).setFontWeight("bold").setBackground("#D8F3DC");
@@ -124,28 +124,28 @@ function doGet(e) {
     try {
       const configSheet = getOrCreateSheet(SHEET_CONFIG);
       let vCode = Number(configSheet.getRange(2, 1).getValue()) || 0;
-      if (vCode < 27) {
+      if (vCode < 28) {
         configSheet.getRange(2, 1, 1, 5).setValues([[
-          27,
-          "1.6.4",
-          "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.4/app-release.apk",
-          "Actualización v1.6.4: Corrección de auto-conflicto en espaciado horario de vitaminas (Ferganic Folic), soporte para advertencias clínicas sin interferencias cruzadas y estabilidad de sincronización.",
+          28,
+          "1.6.5",
+          "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.5/app-release.apk",
+          "Actualización v1.6.5: Sincronización garantizada en tiempo real de Vitaminas entre Papá y Mamá (eliminación de desbordamiento de 50,000 caracteres en Google Sheets, tombstones de borrado, Mutex atómico y recuperación automática de vitaminas cargadas).",
           new Date().toISOString()
         ]]);
       }
       const row = configSheet.getRange(2, 1, 1, 5).getValues()[0];
       return jsonResponse({
-        latestVersionCode: Number(row[0]) || 27,
-        latestVersionName: String(row[1]) || "1.6.4",
-        apkUrl: String(row[2]) || "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.4/app-release.apk",
-        changelog: String(row[3]) || "Actualización v1.6.4 oficial disponible."
+        latestVersionCode: Number(row[0]) || 28,
+        latestVersionName: String(row[1]) || "1.6.5",
+        apkUrl: String(row[2]) || "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.5/app-release.apk",
+        changelog: String(row[3]) || "Actualización v1.6.5 oficial disponible."
       });
     } catch (err) {
       return jsonResponse({
-        latestVersionCode: 27,
-        latestVersionName: "1.6.4",
-        apkUrl: "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.4/app-release.apk",
-        changelog: "Actualización v1.6.4 oficial disponible."
+        latestVersionCode: 28,
+        latestVersionName: "1.6.5",
+        apkUrl: "https://github.com/edward636/App-Llegada-del-Bebe/releases/download/v1.6.5/app-release.apk",
+        changelog: "Actualización v1.6.5 oficial disponible."
       });
     }
   }

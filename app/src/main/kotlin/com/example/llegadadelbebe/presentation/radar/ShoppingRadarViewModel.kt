@@ -542,55 +542,75 @@ class ShoppingRadarViewModel(
     ) {
         if (sheetUrl.isBlank()) return
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val deletedQuoteIds = localPreferences.getDeletedQuoteIds()
+            val localDeletedIds = localPreferences.getDeletedQuoteIds()
             val pendingUploadIds = localPreferences.getPendingUploadQuoteIds()
-            val remoteResult = googleSheetsService.fetchSystemRecord(sheetUrl, com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_RADAR_QUOTES)
-            var hasLocalChanges = pendingUploadIds.isNotEmpty() || forceUpload
+            val remoteResult = googleSheetsService.fetchSystemRecordWithMeta(
+                webAppUrl = sheetUrl,
+                systemId = com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_RADAR_QUOTES
+            )
+            if (remoteResult.isFailure) return@launch
 
-            if (remoteResult.isSuccess) {
-                val remotePayload = remoteResult.getOrNull()
-                if (!remotePayload.isNullOrBlank()) {
-                    val parsedRemote = localPreferences.parseQuotesJson(remotePayload)
-                    if (parsedRemote.any { it.id in deletedQuoteIds }) {
-                        hasLocalChanges = true
+            val remoteData = remoteResult.getOrThrow()
+            if (remoteData.deletedIds.isNotEmpty()) {
+                localPreferences.recordDeletedQuoteIds(remoteData.deletedIds)
+            }
+            val allDeletedIds = localDeletedIds + remoteData.deletedIds
+            var hasLocalChanges = pendingUploadIds.isNotEmpty() ||
+                forceUpload ||
+                (localDeletedIds - remoteData.deletedIds).isNotEmpty()
+
+            val remotePayload = remoteData.payload
+            if (!remotePayload.isNullOrBlank()) {
+                val parsedRemote = localPreferences.parseQuotesJson(remotePayload)
+                if (parsedRemote.any { it.id in allDeletedIds }) {
+                    hasLocalChanges = true
+                }
+                val remoteQuotes = parsedRemote.filterNot { it.id in allDeletedIds }
+                val currentMap = _quotes.value.filterNot { it.id in allDeletedIds }.associateBy { it.id }.toMutableMap()
+                val merged = mutableListOf<ProductPriceQuote>()
+
+                for (rq in remoteQuotes) {
+                    val localExisting = currentMap.remove(rq.id)
+                    // Conservar miniatura local si existe en este teléfono
+                    val hydrated = if (rq.photoBase64.isBlank() && localExisting != null && localExisting.photoBase64.isNotBlank()) {
+                        rq.copy(photoBase64 = localExisting.photoBase64)
+                    } else {
+                        rq
                     }
-                    val remoteQuotes = parsedRemote.filterNot { it.id in deletedQuoteIds }
-                    val currentMap = _quotes.value.filterNot { it.id in deletedQuoteIds }.associateBy { it.id }.toMutableMap()
-                    val merged = mutableListOf<ProductPriceQuote>()
+                    merged.add(hydrated)
+                }
 
-                    for (rq in remoteQuotes) {
-                        currentMap.remove(rq.id)
-                        merged.add(rq)
-                    }
-
-                    // Solo conservar las cotizaciones creadas offline en este teléfono
-                    for ((localId, localQuote) in currentMap) {
-                        if (localId in pendingUploadIds && localId !in deletedQuoteIds) {
-                            merged.add(localQuote)
-                            hasLocalChanges = true
-                        }
-                    }
-
-                    val sorted = merged.sortedByDescending { it.quotedAt }
-                    _quotes.value = sorted
-                    localPreferences.saveRadarQuotesCache(sorted)
-                } else if (_quotes.value.isNotEmpty()) {
+                // Conservar cotizaciones locales válidas que aún no estaban en la nube y no han sido borradas
+                for ((_, localQuote) in currentMap) {
+                    merged.add(localQuote)
                     hasLocalChanges = true
                 }
 
-                // Subir cotizaciones unificadas a la nube solo si la lectura fue exitosa y hay cambios locales
-                if (hasLocalChanges) {
-                    val activeQuotes = _quotes.value.filterNot { it.id in deletedQuoteIds }
-                    val jsonPayload = localPreferences.quotesToJson(activeQuotes)
-                    val saveResult = googleSheetsService.saveSystemRecord(
-                        webAppUrl = sheetUrl,
-                        systemId = com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_RADAR_QUOTES,
-                        name = "Cotizaciones de Precios",
-                        jsonPayload = jsonPayload
-                    )
-                    if (saveResult.isSuccess && saveResult.getOrNull() == true) {
-                        localPreferences.clearPendingUploadQuoteIds()
-                    }
+                val sorted = merged.sortedByDescending { it.quotedAt }
+                _quotes.value = sorted
+                localPreferences.saveRadarQuotesCache(sorted)
+            } else if (_quotes.value.isNotEmpty()) {
+                val activeLocal = _quotes.value.filterNot { it.id in allDeletedIds }
+                _quotes.value = activeLocal
+                localPreferences.saveRadarQuotesCache(activeLocal)
+                if (activeLocal.isNotEmpty()) {
+                    hasLocalChanges = true
+                }
+            }
+
+            // Subir cotizaciones compactas (sin Base64 pesado) para nunca exceder los 50,000 caracteres por celda
+            if (hasLocalChanges) {
+                val activeQuotes = _quotes.value.filterNot { it.id in allDeletedIds }
+                val jsonPayload = localPreferences.quotesToJson(activeQuotes, includePhotos = false)
+                val saveResult = googleSheetsService.saveSystemRecord(
+                    webAppUrl = sheetUrl,
+                    systemId = com.example.llegadadelbebe.data.remote.GoogleSheetsService.SYS_RADAR_QUOTES,
+                    name = "Cotizaciones de Precios",
+                    jsonPayload = jsonPayload,
+                    deletedIds = allDeletedIds
+                )
+                if (saveResult.isSuccess && saveResult.getOrNull() == true) {
+                    localPreferences.clearPendingUploadQuoteIds()
                 }
             }
         }

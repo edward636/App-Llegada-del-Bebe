@@ -150,44 +150,28 @@ class MedicationAlertActivity : ComponentActivity() {
     }
 
     private fun handleTakeDose(medId: String, medName: String) {
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager
+        notificationManager?.cancel(medId.hashCode())
+        notificationManager?.cancel((medId + "_escalated").hashCode())
+        MedicationAlarmScheduler.cancelSnoozeAlarm(this, medId)
+
         val localPreferences = LocalPreferences(this)
-        val todayStr = LocalDate.now().toString()
-        val timeNow = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
         val activeUser = localPreferences.getActiveUser()
+        MedicationCloudSyncManager.recordDoseTakenLocally(
+            context = this,
+            medId = medId,
+            confirmedBy = activeUser
+        )
 
-        val meds = localPreferences.getMedicationsCache().toMutableList()
-        val idx = meds.indexOfFirst { it.id == medId }
-        var pillsRemaining = 30
-
-        if (idx != -1) {
-            val old = meds[idx]
-            val updated = old.copy(
-                lastTakenDate = todayStr,
-                lastTakenTime = timeNow,
-                lastConfirmedBy = activeUser,
-                pillsRemaining = (old.pillsRemaining - 1).coerceAtLeast(0),
-                updatedAt = System.currentTimeMillis()
-            )
-            pillsRemaining = updated.pillsRemaining
-            meds[idx] = updated
-            localPreferences.saveMedicationsCache(meds)
-            localPreferences.addPendingUploadMedicationId(medId)
-            localPreferences.resetMedicationAttemptCount(medId, todayStr)
-        }
-
-        // Subir inmediatamente a Google Sheets en segundo plano para que el Papá se entere en tiempo real
+        // Fusionar y subir atómicamente a Google Sheets en segundo plano para que el Papá se entere en tiempo real
+        val appContext = applicationContext
         val sheetUrl = SecureConfig.getGoogleSheetUrl()
         if (sheetUrl.isNotBlank()) {
             CoroutineScope(Dispatchers.IO).launch {
-                val service = GoogleSheetsService()
-                val deletedIds = localPreferences.getDeletedMedicationIds()
-                val activeList = meds.filterNot { it.id in deletedIds }
-                val json = localPreferences.medicationsToJson(activeList)
-                service.saveSystemRecord(
-                    webAppUrl = sheetUrl,
-                    systemId = GoogleSheetsService.SYS_MEDICATIONS,
-                    name = "Medicamentos Prenatales",
-                    jsonPayload = json
+                MedicationCloudSyncManager.syncMedications(
+                    context = appContext,
+                    sheetUrl = sheetUrl,
+                    forceUpload = true
                 )
             }
         }

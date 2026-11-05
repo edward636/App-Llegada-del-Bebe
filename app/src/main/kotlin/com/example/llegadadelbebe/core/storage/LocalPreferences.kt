@@ -231,7 +231,10 @@ class LocalPreferences(context: Context) {
             .apply()
     }
 
-    fun quotesToJson(quotes: List<com.example.llegadadelbebe.domain.model.ProductPriceQuote>): String {
+    fun quotesToJson(
+        quotes: List<com.example.llegadadelbebe.domain.model.ProductPriceQuote>,
+        includePhotos: Boolean = true
+    ): String {
         val array = JSONArray()
         for (q in quotes) {
             val obj = JSONObject().apply {
@@ -253,7 +256,7 @@ class LocalPreferences(context: Context) {
                 put("unitPriceUsd", q.unitPriceUsd)
                 put("quotedAt", q.quotedAt)
                 put("registeredBy", q.registeredBy)
-                put("photoBase64", q.photoBase64)
+                put("photoBase64", if (includePhotos) q.photoBase64 else "")
                 put("notes", q.notes)
                 put("barcode", q.barcode)
                 put("googleMapsName", q.googleMapsName)
@@ -441,7 +444,10 @@ class LocalPreferences(context: Context) {
             .apply()
     }
 
-    fun medicationsToJson(medications: List<com.example.llegadadelbebe.domain.model.PrenatalMedication>): String {
+    fun medicationsToJson(
+        medications: List<com.example.llegadadelbebe.domain.model.PrenatalMedication>,
+        includePhotos: Boolean = false
+    ): String {
         val array = JSONArray()
         for (m in medications) {
             val obj = JSONObject().apply {
@@ -458,7 +464,7 @@ class LocalPreferences(context: Context) {
                 put("pillsRemaining", m.pillsRemaining)
                 put("totalPillsInPackage", m.totalPillsInPackage)
                 put("isMandatory", m.isMandatory)
-                put("photoBase64", m.photoBase64)
+                put("photoBase64", if (includePhotos) m.photoBase64 else "")
                 put("notes", m.notes)
                 put("lastTakenDate", m.lastTakenDate)
                 put("lastTakenTime", m.lastTakenTime)
@@ -528,6 +534,14 @@ class LocalPreferences(context: Context) {
         prefs.edit().putStringSet(KEY_DELETED_MEDICATION_IDS, current).apply()
     }
 
+    fun recordDeletedMedicationIds(ids: Collection<String>) {
+        if (ids.isEmpty()) return
+        val current = getDeletedMedicationIds().toMutableSet()
+        if (current.addAll(ids)) {
+            prefs.edit().putStringSet(KEY_DELETED_MEDICATION_IDS, current).apply()
+        }
+    }
+
     fun getDeletedQuoteIds(): Set<String> {
         return prefs.getStringSet(KEY_DELETED_QUOTE_IDS, emptySet()) ?: emptySet()
     }
@@ -536,6 +550,14 @@ class LocalPreferences(context: Context) {
         val current = getDeletedQuoteIds().toMutableSet()
         current.add(id)
         prefs.edit().putStringSet(KEY_DELETED_QUOTE_IDS, current).apply()
+    }
+
+    fun recordDeletedQuoteIds(ids: Collection<String>) {
+        if (ids.isEmpty()) return
+        val current = getDeletedQuoteIds().toMutableSet()
+        if (current.addAll(ids)) {
+            prefs.edit().putStringSet(KEY_DELETED_QUOTE_IDS, current).apply()
+        }
     }
 
     fun getMedicationsCache(): List<com.example.llegadadelbebe.domain.model.PrenatalMedication> {

@@ -102,6 +102,7 @@ fun PrenatalMedicationsScreen(
     val adherence by viewModel.adherenceSummary.collectAsStateWithLifecycle()
     val isAnalyzing by viewModel.isAnalyzingPhoto.collectAsStateWithLifecycle()
     val isSyncing by viewModel.isSyncing.collectAsStateWithLifecycle()
+    val cloudSyncOk by viewModel.cloudSyncOk.collectAsStateWithLifecycle()
     val scheduleConflicts by viewModel.scheduleConflicts.collectAsStateWithLifecycle()
     val activeUser by viewModel.activeUser.collectAsStateWithLifecycle()
 
@@ -140,7 +141,7 @@ fun PrenatalMedicationsScreen(
                             pillsRemaining = parsed.pillsInBox,
                             totalPillsInPackage = parsed.pillsInBox,
                             notes = parsed.notes,
-                            photoBase64 = processed.thumbBase64
+                            photoBase64 = ""
                         )
                         selectedMedForEdit = newMed
                         showEditorDialog = true
@@ -241,12 +242,14 @@ fun PrenatalMedicationsScreen(
                 ) {
                     IconButton(
                         onClick = { viewModel.syncWithCloud(forceUpload = true) },
-                        modifier = Modifier.size(32.dp)
+                        modifier = Modifier.size(36.dp)
                     ) {
                         if (isSyncing) {
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        } else if (cloudSyncOk) {
+                            Text("☁️", fontSize = 16.sp)
                         } else {
-                            Text("🔄", fontSize = 16.sp)
+                            Text("⚠️", fontSize = 16.sp)
                         }
                     }
 

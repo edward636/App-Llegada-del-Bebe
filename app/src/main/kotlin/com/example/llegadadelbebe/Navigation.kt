@@ -274,6 +274,9 @@ fun MainNavigation(
                             onUserChanged = { newUser ->
                                 activeUserState = newUser
                                 localPreferences.saveActiveUser(newUser)
+                                inventoryViewModel.setActiveUser(newUser)
+                                radarViewModel.setActiveUser(newUser)
+                                medicationsViewModel.setActiveUser(newUser)
                             },
                             onBack = { backStack.removeLastOrNull() }
                         )

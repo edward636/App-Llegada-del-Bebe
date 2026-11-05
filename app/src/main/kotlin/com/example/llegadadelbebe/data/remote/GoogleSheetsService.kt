@@ -14,6 +14,13 @@ import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 
+data class SystemRecordData(
+    val found: Boolean,
+    val payload: String?,
+    val deletedIds: Set<String> = emptySet(),
+    val updatedAt: Long = 0L
+)
+
 /**
  * Cliente de sincronización para Google Sheets mediante Google Apps Script Web App.
  * Maneja la redirección 302 (POST -> GET en script.googleusercontent.com) propia de Apps Script
@@ -37,6 +44,10 @@ class GoogleSheetsService {
         try {
             val response = executeGetFollowingRedirects(webAppUrl)
             val jsonObject = JSONObject(response)
+            if (jsonObject.optString("status") != "success") {
+                val errMsg = jsonObject.optString("message", "Respuesta inválida de Google Sheets")
+                return@withContext Result.failure(RuntimeException(errMsg))
+            }
             val jsonArray = jsonObject.optJSONArray("data") ?: JSONArray()
             val products = mutableListOf<BabyProduct>()
 
@@ -192,65 +203,120 @@ class GoogleSheetsService {
     }
 
     /**
-     * Recupera un registro de sistema (ej: SYS_PRENATAL_MEDICATIONS, SYS_RADAR_QUOTES, SYS_KNOWN_STORES, SYS_HOSPITAL_BAG)
-     * desde Google Sheets para sincronizar entre Edward y Britney.
-     * Utiliza la consulta rápida específica O(1) de Apps Script v2 (?action=getRecord&id=X) para máxima velocidad,
-     * con fallback automático a la descarga completa si no está disponible.
+     * Recupera un registro de sistema junto con sus metadatos de sincronización (tombstones de borrado y timestamp)
+     * desde Google Sheets para sincronizar entre Edward y Britney sin condiciones de carrera.
+     * Utiliza la consulta rápida específica O(1) de Apps Script v2 (?action=getRecord&id=X), evitando
+     * descargas innecesarias de toda la hoja y distinguiendo errores de bloqueo frente a registros vacíos.
      */
-    suspend fun fetchSystemRecord(webAppUrl: String, systemId: String): Result<String?> = withContext(Dispatchers.IO) {
+    suspend fun fetchSystemRecordWithMeta(webAppUrl: String, systemId: String): Result<SystemRecordData> = withContext(Dispatchers.IO) {
         try {
             // 1. Intento rápido mediante endpoint específico getRecord O(1)
+            var fastEndpointHandledError: Exception? = null
             try {
                 val separator = if (webAppUrl.contains("?")) "&" else "?"
                 val fastUrl = "$webAppUrl${separator}action=getRecord&id=$systemId"
                 val fastResponse = executeGetFollowingRedirects(fastUrl)
                 val fastJson = JSONObject(fastResponse)
-                if (fastJson.optBoolean("found", false)) {
+                val fastStatus = fastJson.optString("status")
+                if (fastStatus == "error") {
+                    val errMsg = fastJson.optString("message", "Error temporal en Google Sheets")
+                    fastEndpointHandledError = RuntimeException(errMsg)
+                } else if (fastStatus == "success" && fastJson.has("found")) {
+                    if (!fastJson.optBoolean("found", false)) {
+                        return@withContext Result.success(SystemRecordData(found = false, payload = null))
+                    }
                     val item = fastJson.optJSONObject("item")
                     val rawNotes = item?.optString("notes", "") ?: ""
                     val (_, metaJson) = unpackNotesAndMeta(rawNotes)
-                    val payload = metaJson?.optString("payload")
-                    if (!payload.isNullOrBlank()) {
-                        return@withContext Result.success(payload)
-                    }
+                    val payload = metaJson?.optString("payload")?.takeIf { it.isNotBlank() }
+                    val deletedIds = extractDeletedIds(metaJson)
+                    val updatedAt = item?.optLong("updatedAt", 0L) ?: 0L
+                    return@withContext Result.success(
+                        SystemRecordData(
+                            found = true,
+                            payload = payload,
+                            deletedIds = deletedIds,
+                            updatedAt = updatedAt
+                        )
+                    )
                 }
             } catch (_: Exception) {
-                // Si falla el endpoint rápido, recurrir al método de barrido general
+                // Si falla la conexión puntual o el script es v1 sin getRecord, intentar fallback general
             }
 
-            // 2. Fallback de barrido general en la hoja
+            if (fastEndpointHandledError != null) {
+                return@withContext Result.failure(fastEndpointHandledError)
+            }
+
+            // 2. Fallback de barrido general en la hoja (solo si el script no soportó getRecord)
             val response = executeGetFollowingRedirects(webAppUrl)
             val jsonObject = JSONObject(response)
+            if (jsonObject.optString("status") != "success") {
+                val errMsg = jsonObject.optString("message", "Respuesta inválida de Google Sheets")
+                return@withContext Result.failure(RuntimeException(errMsg))
+            }
             val jsonArray = jsonObject.optJSONArray("data") ?: JSONArray()
             for (i in 0 until jsonArray.length()) {
                 val item = jsonArray.getJSONObject(i)
                 if (item.optString("id") == systemId) {
                     val rawNotes = item.optString("notes", "")
                     val (_, metaJson) = unpackNotesAndMeta(rawNotes)
-                    val payload = metaJson?.optString("payload")
-                    return@withContext Result.success(payload)
+                    val payload = metaJson?.optString("payload")?.takeIf { it.isNotBlank() }
+                    val deletedIds = extractDeletedIds(metaJson)
+                    val updatedAt = item.optLong("updatedAt", 0L)
+                    return@withContext Result.success(
+                        SystemRecordData(
+                            found = true,
+                            payload = payload,
+                            deletedIds = deletedIds,
+                            updatedAt = updatedAt
+                        )
+                    )
                 }
             }
-            Result.success(null)
+            Result.success(SystemRecordData(found = false, payload = null))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
     /**
-     * Guarda o actualiza un registro de sistema en Google Sheets.
+     * Recupera el payload JSON de un registro de sistema (compatibilidad directa con llamadas simples).
+     */
+    suspend fun fetchSystemRecord(webAppUrl: String, systemId: String): Result<String?> =
+        fetchSystemRecordWithMeta(webAppUrl, systemId).map { it.payload }
+
+    /**
+     * Guarda o actualiza un registro de sistema en Google Sheets protegiendo el límite de 50,000 caracteres por celda.
      */
     suspend fun saveSystemRecord(
         webAppUrl: String,
         systemId: String,
         name: String,
-        jsonPayload: String
+        jsonPayload: String,
+        deletedIds: Set<String> = emptySet()
     ): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
-            val meta = JSONObject().apply {
-                put("payload", jsonPayload)
+            val buildPackedNotes: (String) -> String = { candidatePayload ->
+                val meta = JSONObject().apply {
+                    put("payload", candidatePayload)
+                    if (deletedIds.isNotEmpty()) {
+                        val delArr = JSONArray()
+                        deletedIds.take(300).forEach { delArr.put(it) }
+                        put("deletedIds", delArr)
+                    }
+                }
+                "System Record$META_TAG$meta"
             }
-            val packedNotes = "System Record$META_TAG$meta"
+
+            var packedNotes = buildPackedNotes(jsonPayload)
+            // Google Sheets impone un máximo estricto de 50,000 caracteres por celda.
+            // Si el payload escapado se acerca al límite, limpiamos miniaturas Base64 embebidas para garantizar la escritura.
+            if (packedNotes.length > 45000) {
+                val compactPayload = stripEmbeddedPhotosFromJsonArray(jsonPayload)
+                packedNotes = buildPackedNotes(compactPayload)
+            }
+
             val payload = JSONObject().apply {
                 put("action", "saveItem")
                 put("item", JSONObject().apply {
@@ -267,6 +333,30 @@ class GoogleSheetsService {
             Result.success(jsonObject.optString("status") == "success")
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    private fun extractDeletedIds(metaJson: JSONObject?): Set<String> {
+        val arr = metaJson?.optJSONArray("deletedIds") ?: return emptySet()
+        val result = mutableSetOf<String>()
+        for (i in 0 until arr.length()) {
+            val id = arr.optString(i)
+            if (id.isNotBlank()) result.add(id)
+        }
+        return result
+    }
+
+    private fun stripEmbeddedPhotosFromJsonArray(rawJsonArray: String): String {
+        return try {
+            val arr = JSONArray(rawJsonArray)
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                if (obj.has("photoBase64")) obj.put("photoBase64", "")
+                if (obj.has("rawPhotoBase64")) obj.put("rawPhotoBase64", "")
+            }
+            arr.toString()
+        } catch (_: Exception) {
+            rawJsonArray
         }
     }
 

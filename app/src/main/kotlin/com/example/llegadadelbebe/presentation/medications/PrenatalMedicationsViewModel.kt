@@ -4,15 +4,16 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.llegadadelbebe.core.notification.MedicationAlarmScheduler
-import com.example.llegadadelbebe.core.notification.NotificationHelper
+import com.example.llegadadelbebe.core.notification.MedicationCloudSyncManager
+import com.example.llegadadelbebe.core.security.SecureConfig
 import com.example.llegadadelbebe.core.storage.LocalPreferences
 import com.example.llegadadelbebe.core.util.MedicationConflict
 import com.example.llegadadelbebe.core.util.MedicationConflictHelper
 import com.example.llegadadelbebe.data.remote.GeminiClient
-import com.example.llegadadelbebe.data.remote.GoogleSheetsService
 import com.example.llegadadelbebe.data.remote.ParsedMedicationInfo
 import com.example.llegadadelbebe.domain.model.MedicationAdherenceSummary
 import com.example.llegadadelbebe.domain.model.PrenatalMedication
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -30,7 +31,6 @@ class PrenatalMedicationsViewModel(
 
     private val localPreferences = LocalPreferences(application)
     private val geminiClient = GeminiClient()
-    private val googleSheetsService = GoogleSheetsService()
 
     private val _medications = MutableStateFlow<List<PrenatalMedication>>(emptyList())
     val medications: StateFlow<List<PrenatalMedication>> = _medications.asStateFlow()
@@ -41,6 +41,9 @@ class PrenatalMedicationsViewModel(
     private val _isSyncing = MutableStateFlow(false)
     val isSyncing: StateFlow<Boolean> = _isSyncing.asStateFlow()
 
+    private val _cloudSyncOk = MutableStateFlow(true)
+    val cloudSyncOk: StateFlow<Boolean> = _cloudSyncOk.asStateFlow()
+
     private val _activeUser = MutableStateFlow(localPreferences.getActiveUser())
     val activeUser: StateFlow<String> = _activeUser.asStateFlow()
 
@@ -49,6 +52,7 @@ class PrenatalMedicationsViewModel(
     }
 
     fun refreshMedications() {
+        _activeUser.value = localPreferences.getActiveUser()
         loadMedications()
         syncWithCloud()
     }
@@ -86,7 +90,6 @@ class PrenatalMedicationsViewModel(
     private fun loadMedications() {
         val cached = localPreferences.getMedicationsCache()
         _medications.value = cached
-        // Asegurar alarmas programadas
         cached.forEach { med ->
             med.scheduleTimes.forEach { time ->
                 MedicationAlarmScheduler.scheduleMedicationAlarm(
@@ -95,7 +98,8 @@ class PrenatalMedicationsViewModel(
                     medName = med.name,
                     dose = med.dose,
                     instructions = med.foodInstructions,
-                    timeStr = time
+                    timeStr = time,
+                    forceTomorrow = med.isTakenToday
                 )
             }
         }
@@ -112,6 +116,7 @@ class PrenatalMedicationsViewModel(
                     lastTakenTime = timeNow,
                     lastConfirmedBy = user,
                     pillsRemaining = (med.pillsRemaining - 1).coerceAtLeast(0),
+                    photoBase64 = "",
                     updatedAt = System.currentTimeMillis()
                 )
             } else med
@@ -120,14 +125,23 @@ class PrenatalMedicationsViewModel(
         _medications.value = updatedList
         localPreferences.saveMedicationsCache(updatedList)
         localPreferences.addPendingUploadMedicationId(id)
+        localPreferences.resetMedicationAttemptCount(id, todayStr)
         syncWithCloud(forceUpload = true)
     }
 
     fun saveMedication(med: PrenatalMedication) {
-        val stampedMed = med.copy(updatedAt = System.currentTimeMillis())
+        // Excluir miniatura Base64 para mantener sincronización instantánea (< 2 KB) y respetar el límite de Google Sheets
+        val stampedMed = med.copy(
+            photoBase64 = "",
+            updatedAt = System.currentTimeMillis()
+        )
         val current = _medications.value.toMutableList()
         val index = current.indexOfFirst { it.id == stampedMed.id }
         if (index >= 0) {
+            val previousTimes = current[index].scheduleTimes
+            (previousTimes - stampedMed.scheduleTimes.toSet()).forEach { removedTime ->
+                MedicationAlarmScheduler.cancelMedicationAlarm(getApplication(), stampedMed.id, removedTime)
+            }
             current[index] = stampedMed
         } else {
             current.add(0, stampedMed)
@@ -146,7 +160,8 @@ class PrenatalMedicationsViewModel(
                 medName = stampedMed.name,
                 dose = stampedMed.dose,
                 instructions = stampedMed.foodInstructions,
-                timeStr = time
+                timeStr = time,
+                forceTomorrow = stampedMed.isTakenToday
             )
         }
     }
@@ -186,120 +201,21 @@ class PrenatalMedicationsViewModel(
     }
 
     fun syncWithCloud(
-        sheetUrl: String = com.example.llegadadelbebe.core.security.SecureConfig.getGoogleSheetUrl(),
+        sheetUrl: String = SecureConfig.getGoogleSheetUrl(),
         forceUpload: Boolean = false
     ) {
         if (sheetUrl.isBlank()) return
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.IO) {
             _isSyncing.value = true
             try {
-                // Recargar caché primero por si se confirmó una dosis desde la notificación de Android
-                val freshCached = localPreferences.getMedicationsCache()
-                _medications.value = freshCached
-
-                val deletedIds = localPreferences.getDeletedMedicationIds()
-                val pendingUploadIds = localPreferences.getPendingUploadMedicationIds()
-                val isDad = activeUser.value.contains("Papá", ignoreCase = true)
-                val todayStr = LocalDate.now().toString()
-
-                val remoteResult = googleSheetsService.fetchSystemRecord(sheetUrl, GoogleSheetsService.SYS_MEDICATIONS)
-                var hasLocalChangesToUpload = pendingUploadIds.isNotEmpty() || forceUpload
-
-                if (remoteResult.isSuccess) {
-                    val remotePayload = remoteResult.getOrNull()
-                    if (!remotePayload.isNullOrBlank()) {
-                        val parsedRemote = localPreferences.parseMedicationsJson(remotePayload)
-                        if (parsedRemote.any { it.id in deletedIds }) {
-                            hasLocalChangesToUpload = true
-                        }
-                        val remoteList = parsedRemote.filterNot { it.id in deletedIds }
-                        val localMap = freshCached.filterNot { it.id in deletedIds }.associateBy { it.id }.toMutableMap()
-                        val merged = mutableListOf<PrenatalMedication>()
-
-                        for (remote in remoteList) {
-                            val local = localMap.remove(remote.id)
-                            if (local == null) {
-                                merged.add(remote)
-                            } else {
-                                if (local.updatedAt > remote.updatedAt) {
-                                    merged.add(local)
-                                    hasLocalChangesToUpload = true
-                                } else {
-                                    merged.add(remote)
-                                }
-                            }
-
-                            // Si es el teléfono del Papá, avisarle proactivamente cuando Mamá se tomó la vitamina
-                            if (isDad && remote.lastTakenDate == todayStr && remote.lastConfirmedBy.contains("Mamá", ignoreCase = true)) {
-                                if (!localPreferences.isDadNotifiedForDose(remote.id, remote.lastTakenDate, remote.lastTakenTime)) {
-                                    NotificationHelper.showDadMedicationNotification(
-                                        context = getApplication(),
-                                        medName = remote.name,
-                                        dose = remote.dose,
-                                        takenTime = remote.lastTakenTime,
-                                        pillsRemaining = remote.pillsRemaining
-                                    )
-                                    localPreferences.markDadNotifiedForDose(remote.id, remote.lastTakenDate, remote.lastTakenTime)
-
-                                    // Cancelar alarmas pendientes del papá para no recordarle innecesariamente
-                                    remote.scheduleTimes.forEach { time ->
-                                        MedicationAlarmScheduler.cancelMedicationAlarm(getApplication(), remote.id, time)
-                                    }
-                                }
-                            }
-                        }
-
-                        // Solo conservar los creados offline en este teléfono que aún no se hayan subido
-                        for ((_, localOnly) in localMap) {
-                            if (localOnly.id in pendingUploadIds && localOnly.id !in deletedIds) {
-                                merged.add(localOnly)
-                                hasLocalChangesToUpload = true
-                            } else {
-                                // Eliminado remotamente por el otro teléfono: cancelar sus alarmas
-                                localOnly.scheduleTimes.forEach { time ->
-                                    MedicationAlarmScheduler.cancelMedicationAlarm(getApplication(), localOnly.id, time)
-                                }
-                            }
-                        }
-
-                        _medications.value = merged
-                        localPreferences.saveMedicationsCache(merged)
-
-                        // Reconciliar alarmas para todas las vitaminas activas
-                        merged.forEach { med ->
-                            // Si ya fue tomada hoy, no activar alarma
-                            if (!med.isTakenToday) {
-                                med.scheduleTimes.forEach { time ->
-                                    MedicationAlarmScheduler.scheduleMedicationAlarm(
-                                        context = getApplication(),
-                                        medId = med.id,
-                                        medName = med.name,
-                                        dose = med.dose,
-                                        instructions = med.foodInstructions,
-                                        timeStr = time
-                                    )
-                                }
-                            }
-                        }
-                    } else {
-                        hasLocalChangesToUpload = true
-                    }
-
-                    // Subir estado consolidado a la nube solo cuando la lectura remota fue exitosa y hay cambios
-                    if (hasLocalChangesToUpload) {
-                        val activeMedications = _medications.value.filterNot { it.id in deletedIds }
-                        val jsonPayload = localPreferences.medicationsToJson(activeMedications)
-                        val saveResult = googleSheetsService.saveSystemRecord(
-                            webAppUrl = sheetUrl,
-                            systemId = GoogleSheetsService.SYS_MEDICATIONS,
-                            name = "Medicamentos Prenatales",
-                            jsonPayload = jsonPayload
-                        )
-                        if (saveResult.isSuccess && saveResult.getOrNull() == true) {
-                            localPreferences.clearPendingUploadMedicationIds()
-                        }
-                    }
-                }
+                _activeUser.value = localPreferences.getActiveUser()
+                val outcome = MedicationCloudSyncManager.syncMedications(
+                    context = getApplication(),
+                    sheetUrl = sheetUrl,
+                    forceUpload = forceUpload
+                )
+                _medications.value = outcome.medications
+                _cloudSyncOk.value = outcome.syncedOk
             } finally {
                 _isSyncing.value = false
             }

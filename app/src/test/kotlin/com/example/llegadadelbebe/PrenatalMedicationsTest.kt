@@ -1,7 +1,9 @@
 package com.example.llegadadelbebe
 
+import com.example.llegadadelbebe.core.notification.MedicationCloudSyncManager
 import com.example.llegadadelbebe.core.util.ConflictSeverity
 import com.example.llegadadelbebe.core.util.MedicationConflictHelper
+import com.example.llegadadelbebe.data.remote.SystemRecordData
 import com.example.llegadadelbebe.domain.model.MedicationAdherenceSummary
 import com.example.llegadadelbebe.domain.model.PrenatalMedication
 import org.junit.Assert.assertEquals
@@ -235,5 +237,121 @@ class PrenatalMedicationsTest {
         assertEquals("Calcibon Natal", pairConflicts[0].med2Name)
         assertEquals("Ferganic Folic", pairConflicts[0].med1Name)
         assertTrue(pairConflicts[0].description.contains("El Calcio en 'Calcibon Natal' (11:00) bloquea la absorción del Hierro en 'Ferganic Folic' (10:00)"))
+    }
+
+    @Test
+    fun testTwoPhoneSync_RecoversDadVitaminsWhenCloudIsEmptyArrayAndStripsHeavyBase64() {
+        // Simula el estado exacto del teléfono del Papá cuando Google Sheets tenía "[]"
+        // y las vitaminas escaneadas por cámara tenían miniaturas Base64 de ~22,000 caracteres (>50,000 en total)
+        val heavyThumb = "A".repeat(22000)
+        val dadMeds = listOf(
+            PrenatalMedication(
+                id = "MED_DAD_1",
+                name = "Ferganic Folic",
+                photoBase64 = heavyThumb,
+                updatedAt = 1793800001000L
+            ),
+            PrenatalMedication(
+                id = "MED_DAD_2",
+                name = "Calcibon Natal",
+                photoBase64 = heavyThumb,
+                updatedAt = 1793800002000L
+            ),
+            PrenatalMedication(
+                id = "MED_DAD_3",
+                name = "Natele / Omega 3 DHA",
+                photoBase64 = heavyThumb,
+                updatedAt = 1793800003000L
+            )
+        )
+        val remoteEmptyRow = SystemRecordData(
+            found = true,
+            payload = "[]",
+            deletedIds = emptySet(),
+            updatedAt = 1793840041220L
+        )
+        val dadDeletedDefaults = setOf("MED_DEFAULT_FOLIC", "MED_DEFAULT_IRON", "MED_DEFAULT_CALCIUM")
+
+        val plan = MedicationCloudSyncManager.mergeMedicationsTwoPhone(
+            localCached = dadMeds,
+            remoteData = remoteEmptyRow,
+            parsedRemote = emptyList(),
+            localDeletedIds = dadDeletedDefaults,
+            pendingUploadIds = emptySet(), // Incluso si pendingUploadIds se hubiese limpiado antes
+            forceUpload = false
+        )
+
+        assertEquals("Las 3 vitaminas cargadas por el Papá deben conservarse y recuperarse", 3, plan.merged.size)
+        assertTrue("Debe marcar subida obligatoria a Google Sheets", plan.shouldUpload)
+        assertTrue("Todas las fotos Base64 deben limpiarse para no superar los 50,000 chars por celda", plan.merged.all { it.photoBase64.isEmpty() })
+        assertEquals(dadDeletedDefaults, plan.allDeletedIds)
+    }
+
+    @Test
+    fun testTwoPhoneSync_MomReceivesDadVitaminsAndDiscardsUntouchedDefaults() {
+        // El teléfono de la Mamá tiene aún las 3 plantillas iniciales intactas (updatedAt = 1000L)
+        val momUntouchedDefaults = listOf(
+            PrenatalMedication(id = "MED_DEFAULT_FOLIC", name = "Ácido Fólico", updatedAt = 1000L),
+            PrenatalMedication(id = "MED_DEFAULT_IRON", name = "Hierro", updatedAt = 1000L),
+            PrenatalMedication(id = "MED_DEFAULT_CALCIUM", name = "Calcio", updatedAt = 1000L)
+        )
+        // En la nube ya están las vitaminas reales subidas por el Papá
+        val remoteFromDad = listOf(
+            PrenatalMedication(id = "MED_DAD_1", name = "Ferganic Folic", scheduleTimes = listOf("10:00"), updatedAt = 1793850000000L),
+            PrenatalMedication(id = "MED_DAD_2", name = "Calcibon Natal", scheduleTimes = listOf("14:00"), updatedAt = 1793850005000L)
+        )
+        val remoteData = SystemRecordData(
+            found = true,
+            payload = "[...]",
+            deletedIds = setOf("MED_DEFAULT_FOLIC", "MED_DEFAULT_IRON", "MED_DEFAULT_CALCIUM"),
+            updatedAt = 1793850006000L
+        )
+
+        val plan = MedicationCloudSyncManager.mergeMedicationsTwoPhone(
+            localCached = momUntouchedDefaults,
+            remoteData = remoteData,
+            parsedRemote = remoteFromDad,
+            localDeletedIds = emptySet(),
+            pendingUploadIds = emptySet(),
+            forceUpload = false
+        )
+
+        assertEquals(2, plan.merged.size)
+        assertEquals("Ferganic Folic", plan.merged[0].name)
+        assertEquals("Calcibon Natal", plan.merged[1].name)
+        assertEquals(3, plan.removedLocalItems.size)
+        assertFalse("Mamá no necesita re-subir si solo descargó datos limpios del Papá", plan.shouldUpload)
+    }
+
+    @Test
+    fun testTwoPhoneSync_MomDoseConfirmationWinsByUpdatedAtAndPropagatesToDad() {
+        val today = LocalDate.now().toString()
+        val remoteMed = PrenatalMedication(
+            id = "MED_DAD_1",
+            name = "Ferganic Folic",
+            pillsRemaining = 28,
+            updatedAt = 10_000L
+        )
+        val momConfirmedLocal = remoteMed.copy(
+            pillsRemaining = 27,
+            lastTakenDate = today,
+            lastTakenTime = "09:15",
+            lastConfirmedBy = "Mamá (Britney)",
+            updatedAt = 20_000L
+        )
+
+        val plan = MedicationCloudSyncManager.mergeMedicationsTwoPhone(
+            localCached = listOf(momConfirmedLocal),
+            remoteData = SystemRecordData(found = true, payload = "[...]", updatedAt = 10_000L),
+            parsedRemote = listOf(remoteMed),
+            localDeletedIds = emptySet(),
+            pendingUploadIds = setOf("MED_DAD_1"),
+            forceUpload = true
+        )
+
+        assertEquals(1, plan.merged.size)
+        assertEquals(27, plan.merged[0].pillsRemaining)
+        assertEquals("Mamá (Britney)", plan.merged[0].lastConfirmedBy)
+        assertTrue(plan.shouldUpload)
     }
 }

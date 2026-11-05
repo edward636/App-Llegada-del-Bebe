@@ -44,48 +44,35 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
                 // Cancelar notificaciones activas de esta vitamina
                 notificationManager.cancel(medId.hashCode())
                 notificationManager.cancel((medId + "_escalated").hashCode())
+                MedicationAlarmScheduler.cancelSnoozeAlarm(context, medId)
 
                 val timeNow = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm"))
-                val currentMeds = localPreferences.getMedicationsCache().toMutableList()
-                val idx = currentMeds.indexOfFirst { it.id == medId }
-                var pillsRemaining = 30
+                val pillsRemaining = MedicationCloudSyncManager.recordDoseTakenLocally(
+                    context = context,
+                    medId = medId,
+                    confirmedBy = activeUser
+                )
+                MedicationAlarmScheduler.scheduleNextDailyAlarm(
+                    context = context,
+                    medId = medId,
+                    medName = medName,
+                    dose = dose,
+                    instructions = instructions,
+                    timeStr = scheduledTime
+                )
 
-                if (idx != -1) {
-                    val old = currentMeds[idx]
-                    val updated = old.copy(
-                        lastTakenDate = todayStr,
-                        lastTakenTime = timeNow,
-                        lastConfirmedBy = activeUser,
-                        pillsRemaining = (old.pillsRemaining - 1).coerceAtLeast(0),
-                        updatedAt = System.currentTimeMillis()
-                    )
-                    pillsRemaining = updated.pillsRemaining
-                    currentMeds[idx] = updated
-                    localPreferences.saveMedicationsCache(currentMeds)
-                    localPreferences.addPendingUploadMedicationId(medId)
-                    localPreferences.resetMedicationAttemptCount(medId, todayStr)
-                }
-
-                // Sincronización Inmediata con Google Sheets usando goAsync()
-                // Garantiza que el Papá reciba la notificación en su teléfono de inmediato
+                // Sincronización Atómica con Google Sheets usando goAsync() + Mutex
+                // Fusiona el estado remoto antes de subir para nunca pisar vitaminas cargadas en el otro teléfono
                 val pendingResult = goAsync()
                 val sheetUrl = SecureConfig.getGoogleSheetUrl()
                 if (sheetUrl.isNotBlank()) {
                     CoroutineScope(Dispatchers.IO).launch {
                         try {
-                            val service = GoogleSheetsService()
-                            val deletedIds = localPreferences.getDeletedMedicationIds()
-                            val activeList = currentMeds.filterNot { it.id in deletedIds }
-                            val json = localPreferences.medicationsToJson(activeList)
-                            val res = service.saveSystemRecord(
-                                webAppUrl = sheetUrl,
-                                systemId = GoogleSheetsService.SYS_MEDICATIONS,
-                                name = "Medicamentos Prenatales",
-                                jsonPayload = json
+                            MedicationCloudSyncManager.syncMedications(
+                                context = context,
+                                sheetUrl = sheetUrl,
+                                forceUpload = true
                             )
-                            if (res.isSuccess && res.getOrNull() == true) {
-                                localPreferences.removePendingUploadMedicationId(medId)
-                            }
                         } finally {
                             pendingResult.finish()
                         }
@@ -136,6 +123,15 @@ class MedicationAlarmReceiver : BroadcastReceiver() {
                 if (currentMed?.isTakenToday == true) {
                     notificationManager.cancel(medId.hashCode())
                     notificationManager.cancel((medId + "_escalated").hashCode())
+                    MedicationAlarmScheduler.cancelSnoozeAlarm(context, medId)
+                    MedicationAlarmScheduler.scheduleNextDailyAlarm(
+                        context = context,
+                        medId = medId,
+                        medName = medName,
+                        dose = dose,
+                        instructions = instructions,
+                        timeStr = scheduledTime
+                    )
                     return
                 }
 
@@ -347,7 +343,8 @@ object MedicationAlarmScheduler {
         dose: String,
         instructions: String,
         timeStr: String, // "HH:mm"
-        attemptCount: Int = 1
+        attemptCount: Int = 1,
+        forceTomorrow: Boolean = false
     ) {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
@@ -360,7 +357,7 @@ object MedicationAlarmScheduler {
             set(Calendar.MINUTE, minute)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
-            if (before(Calendar.getInstance())) {
+            if (forceTomorrow || before(Calendar.getInstance())) {
                 add(Calendar.DAY_OF_YEAR, 1)
             }
         }
@@ -488,7 +485,28 @@ object MedicationAlarmScheduler {
         instructions: String,
         timeStr: String
     ) {
-        scheduleMedicationAlarm(context, medId, medName, dose, instructions, timeStr, attemptCount = 1)
+        scheduleMedicationAlarm(
+            context = context,
+            medId = medId,
+            medName = medName,
+            dose = dose,
+            instructions = instructions,
+            timeStr = timeStr,
+            attemptCount = 1,
+            forceTomorrow = true
+        )
+    }
+
+    fun cancelSnoozeAlarm(context: Context, medId: String) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val snoozeIntent = Intent(context, MedicationAlarmReceiver::class.java)
+        val snoozePendingIntent = PendingIntent.getBroadcast(
+            context,
+            (medId + "_snooze_alarm").hashCode(),
+            snoozeIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        alarmManager.cancel(snoozePendingIntent)
     }
 
     fun cancelMedicationAlarm(context: Context, medId: String, timeStr: String) {
@@ -502,15 +520,6 @@ object MedicationAlarmScheduler {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         alarmManager.cancel(pendingIntent)
-
-        // Cancelar también cualquier alarma de posponer (snooze)
-        val snoozeIntent = Intent(context, MedicationAlarmReceiver::class.java)
-        val snoozePendingIntent = PendingIntent.getBroadcast(
-            context,
-            (medId + "_snooze_alarm").hashCode(),
-            snoozeIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        alarmManager.cancel(snoozePendingIntent)
+        cancelSnoozeAlarm(context, medId)
     }
 }
